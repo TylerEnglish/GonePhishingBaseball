@@ -21,10 +21,10 @@ def features(df):
         ,'Outs'
         ,'Balls'
         ,'Strikes'
-        ,'PitchCall'
+        ,'CleanPitchCall'
         ,'KorBB' # might take out but Bracken is using
         , 'CleanPitchType'
-        , 'TaggedHitType'
+        , 'CleanHitType'
         ,'PlayResult'
         ,'OutsOnPlay'
         ,'RunsScored'
@@ -72,49 +72,9 @@ def features(df):
         ,'PitchUID'
         ,'EffectiveVelo'
         ,'MaxHeight'
-        ,'MeasuredDuration'
         ,'SpeedDrop'
-        ,'AutoHitType'
         ,'PitcherTeam'
-        #,'PitchTrajectoryXc0'
-        # ,'PitchTrajectoryXc1'
-        # ,'PitchTrajectoryXc2'
-        # ,'PitchTrajectoryYc0'
-        # ,'PitchTrajectoryYc1'
-        # ,'PitchTrajectoryYc2'
-        # ,'PitchTrajectoryZc0'
-        # ,'PitchTrajectoryZc1'
-        # ,'PitchTrajectoryZc2'
         ,'HitSpinAxis'
-        # ,'HitTrajectoryXc0'
-        # ,'HitTrajectoryXc1'
-        # ,'HitTrajectoryXc2'
-        # ,'HitTrajectoryXc3'
-        # ,'HitTrajectoryXc4'
-        # ,'HitTrajectoryXc5'
-        # ,'HitTrajectoryXc6'
-        # ,'HitTrajectoryXc7'
-        # ,'HitTrajectoryXc8'
-        # ,'HitTrajectoryYc0'
-        # ,'HitTrajectoryYc1'
-        # ,'HitTrajectoryYc2'
-        # ,'HitTrajectoryYc3'
-        # ,'HitTrajectoryYc4'
-        # ,'HitTrajectoryYc5'
-        # ,'HitTrajectoryYc6'
-        # ,'HitTrajectoryYc7'
-        # ,'HitTrajectoryYc8'
-        # ,'HitTrajectoryZc0'
-        # ,'HitTrajectoryZc1'
-        # ,'HitTrajectoryZc2'
-        # ,'HitTrajectoryZc3'
-        # ,'HitTrajectoryZc4'
-        # ,'HitTrajectoryZc5'
-        # ,'HitTrajectoryZc6'
-        # ,'HitTrajectoryZc7'
-        # HitTrajectoryZc8
-        # ,'HitLaunchConfidence' # bc it has so many nulls
-        # ,'HitLandingConfidence' # bc it has so many nulls
         ]
     df = df[valuable_columns]
     df = df.copy(deep=True)
@@ -122,7 +82,7 @@ def features(df):
 
 
 def filter_pipe():
-    input_file = "Derived_Data/clean/cleaned_20250228_235946.parquet"
+    input_file = "Derived_Data/clean/cleaned_20250301_102622.parquet"
     
     if not os.path.exists(input_file):
         print(f"Input file not found: {input_file}")

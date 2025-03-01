@@ -162,10 +162,10 @@ def predict(pitcher, batter, model, scaler, encoders, df, feature_cols, target_c
     results_df = pd.DataFrame(results)
     
     # Determine best pitch based on maximum average probability for "StrikeCalled".
-    if "StrikeCalled" in results_df.columns:
-        best_idx = results_df["StrikeCalled"].idxmax()
-        best_pitch = results_df.loc[best_idx, "PitchType"]
-        print(f"Recommended pitch: {best_pitch} with {results_df.loc[best_idx, 'StrikeCalled']}% chance for 'StrikeCalled'")
+    if "Strike" in results_df.columns:
+        best_idx = results_df["Strike"].idxmax()
+        best_pitch = results_df.loc[best_idx, "CleanPitchType"]
+        print(f"Recommended pitch: {best_pitch} with {results_df.loc[best_idx, 'Strike']}% chance for 'Strike'")
     else:
         best_pitch = None
     
@@ -195,7 +195,7 @@ def model_train(data_path="data.parquet"):
     df = table.to_pandas()
     
     # Define target column.
-    target_col = 'PitchCall'
+    target_col = 'CleanPitchCall'
     
     # Fill missing values for every feature column.
     for col in df.columns:

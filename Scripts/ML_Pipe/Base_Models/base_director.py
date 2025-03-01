@@ -280,7 +280,7 @@ def training_pipe():
 
 if __name__ == "__main__":
     # Example 1: Run the full pipeline (train + save + predict)
-    # training_pipe()
+    training_pipe()
 
     # Example 2: If models & extras are already saved, just do predictions
     # (comment out the training_pipe if you only want to do inference)

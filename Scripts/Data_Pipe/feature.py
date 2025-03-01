@@ -3,6 +3,7 @@ import pandas as pd
 import os
 from datetime import datetime
 from scipy.stats import entropy  # Entropy helps measure unpredictability in pitch selection
+import numpy as np
 
 def compute_basic_features(df):
     basic_features = df.groupby(["Date", "PitchofPA", "PitcherId", "BatterId"]).agg(
@@ -11,8 +12,8 @@ def compute_basic_features(df):
         Avg_Horizontal_Release_Angle=("HorzRelAngle", "mean"),
         Avg_Spin_Rate=("SpinRate", "mean"),
         Avg_Spin_Axis=("SpinAxis", "mean"),
-        Strike_Percentage=("PitchCall", lambda x: (x == "Strike").sum() / len(x)),
-        Ball_Percentage=("PitchCall", lambda x: (x == "Ball").sum() / len(x)),
+        Strike_Percentage=("CleanPitchCall", lambda x: (x == "Strike").sum() / len(x)),
+        Ball_Percentage=("CleanPitchCall", lambda x: (x == "Ball").sum() / len(x)),
         Outs_Created=("OutsOnPlay", "sum"),
         Avg_PlateLocHeight=("PlateLocHeight", "mean"),
         Avg_PlateLocSide=("PlateLocSide", "mean")
@@ -135,7 +136,7 @@ def add_pitch_num_std(df):
 # ====================================
 
 def feature_pipe():
-    input_file = "Derived_Data/filter/filtered_20250301_031659.parquet"
+    input_file = "Derived_Data/filter/filtered_20250301_102846.parquet"
     
     if not os.path.exists(input_file):
         print(f"Input file not found: {input_file}")
@@ -150,8 +151,6 @@ def feature_pipe():
     df = compute_advanced_features(df)
 
     df = df.copy(deep=True)
-
-    print(df.info())
 
     output_dir = "derived_data/feature"
     os.makedirs(output_dir, exist_ok=True)
