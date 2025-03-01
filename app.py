@@ -123,14 +123,21 @@ with ml:
             df = pd.read_parquet(uploaded_file)
 
         unique_pitchers = list(df["PitcherId"].unique())
-        st.markdown(unique_pitchers)
         unique_batters = list(df["BatterId"].unique())
-        st.markdown(unique_batters)
 
-        combinations = [(x, y) for x in unique_pitchers for y in unique_batters]
+        pitcher_id = [1000066910.0,1000060505.0,701628.0,815136.0,1000056876.0]
+        batter_id = [1000032366.0, 1000274194.0,1000035496.0,1000056633.0,683106.0]
 
-        for comb in combinations:
-            predictions = predict(comb[0], comb[1])
+        predictions = predict(pitcher_id[0], batter_id[0])
+        
+        cls_pred = f"Derived_Data/model_pred/cls_prediction_report_{int(pitcher_id[0])}_{int(batter_id[0])}.csv"
+        reg_pred = f"Derived_Data/model_pred/reg_prediction_report_{int(pitcher_id[0])}_{int(batter_id[0])}.csv"
+
+        reg = pd.read_csv(reg_pred)
+        cls = pd.read_csv(cls_pred)
+
+        st.table(reg)
+        st.table(cls)
 
 
 with outs:
