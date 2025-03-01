@@ -145,13 +145,23 @@ def feature_pipe():
     df = df.copy(deep=True)
     df = compute_advanced_features(df)
 
+    df = df.copy(deep=True)
+
+    print(df.info())
+
     output_dir = "derived_data/feature"
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_file = os.path.join(output_dir, f"feature_{timestamp}.parquet")
     
-    df.to_parquet(output_file, index=False)
     
+    df.to_parquet(output_file, index=False)
+    df = df.drop(columns=['Date', 'Time'])
+
+    output_file = os.path.join(output_dir, f"nDate_feature.parquet")
+    df.to_parquet(output_file, index=False)
+
+
     print(f"Data saved to {output_file}")
 
 

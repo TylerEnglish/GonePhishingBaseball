@@ -98,7 +98,7 @@ def train():
     reg_model, reg_scaler, df_reg, feature_cols_reg = train_reg()
     
     print("Training classification model...")
-    data_path = "Derived_Data/feature/feature_20250301_055043.parquet"
+    data_path = "Derived_Data/feature/nDate_feature.parquet"
     cls_model, cls_scaler, encoders, feature_cols_cls, target_col, df_cls = train_cls(data_path)
     
     models = {
