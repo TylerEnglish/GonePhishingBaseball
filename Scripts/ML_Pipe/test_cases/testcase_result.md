@@ -67,7 +67,7 @@ Despite these fluctuations, the final selected model produced a validation `RMSE
 
 
 
-## Pycarrot Class
+## Pycaret Classification
 
 ### Results
 
@@ -118,11 +118,11 @@ Despite these fluctuations, the final selected model produced a validation `RMSE
 | Linear Discriminant Analysis    | 0.0015   | 0.0  | 0.0015 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 1.240    |
 
 #### Explanation
-Takes forever for mediorcer results.
+While it simplifies workflow and supports multiple algorithms, its performance can be underwhelming for complex datasets. The auto-ML process, which tests numerous models and configurations, can be time-consuming, often leading to only mediocre results compared to manually fine-tuned models.
 
 ---
 
-## Pycarrot Reg
+## Pycaret Regression
 
 ### Results
 
@@ -163,4 +163,4 @@ Takes forever for mediorcer results.
 | TT (Sec)  | 0.282      | 0.212      | 0.064      | 0.274      | 0.069      | 0.175      | 0.229      | 0.065      | 0.155    | 1.473      | 0.081      | 0.450      | 0.263      | 0.084      | 0.126      | 0.063      | 0.086       | 0.062              |
 
 #### Explanations
-Just takes too long for mediocre results.
+ Despite the extended runtime, the results often fail to outperform a well-optimized standalone XGBoost model. While PyCaret is useful for rapid experimentation, its lack of granular control and inefficiencies make it less suitable for those seeking top-tier performance in regression tasks.

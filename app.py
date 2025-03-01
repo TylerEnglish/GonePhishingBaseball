@@ -5,7 +5,7 @@ import numpy as np
 from Scripts.ML_Pipe.Base_Models.base_director import predict
 
 st.set_page_config(
-    page_title="Pioneer League Metrics Group",
+    page_title="Pioneer League Machine Learning Group",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -27,7 +27,7 @@ colors = [
 # Sidebar Navigation
 st.sidebar.header("Filters")
 
-data = pd.read_parquet("Derived_Data/filter/filtered_20250228_231053.parquet")
+data = pd.read_parquet("Derived_Data/filter/filtered_20250301_104903.parquet")
 
 data["year"] = pd.to_datetime(data["Date"]).dt.year
 data["year"] = data["year"].fillna(method="ffill")
@@ -74,43 +74,53 @@ selected_pitcher_team = st.sidebar.selectbox(
 
 if selected_pitcher_team != "All Teams":
     data = data[data["TeamName"] == selected_pitcher_team]
-    home, ml, outs, runs, outs_by, appendix = st.tabs(
-        ["Home", "Machine Learning", "Out Analytics", "Run Analytics", "Outs By Player", "Appendix"]
-    )
-else:
-    home, ml, outs, runs, outs_by, appendix = st.tabs(
-        ["Home", "Machine Learning", "Out Analytics", "Run Analytics", "Outs By Team", "Appendix"]
-    )
+
+home, ml, outs, runs, outs_by, appendix, future = st.tabs(
+    ["Home", "Machine Learning", "Out Analytics", "Run Analytics", "Strikes and Outs", "Appendix", "Future Goals"]
+)
 
 with home:
-    st.header("Pioneer Baseballs League Metrics Group Analysis")
+    st.header("Pioneer Baseball League: Optimized Pitching Sequence Model")
     st.write(
-        "Welcome to the Pioneer League Metrics Group interactive dashboard! Our mission is to leverage data visualization, machine learning models,\
-        and statistical analysis to help teams within the Pioneer Baseball League (PBL) make informed, data-driven decisions. Our analysis focuses on \
-        key baseball metrics to provide insights into player performance, team strategies, and game outcomes."
+        "Welcome to the Pioneer League Machine Learning Group interactive dashboard! Our mission is to leverage data for machine learning models\
+        and statistical analysis to help teams within the Pioneer Baseball League (PBL) make informed, data-driven decisions. Our project focuses on\
+        using pitcher and batter data to create an optimized pitching sequence that predicts, for a given pitcher and batter, how many pitches it would take to get an out as well as\
+        the types of pitches to use."
     )
     st.markdown("### Why This Matters")
     st.markdown(
         "Data-driven approaches are transforming baseball. From sabermetrics to real-time game insights, teams that embrace analytics gain a competitive edge.\
-                By applying machine learning models and statistical techniques, we can help optimize performance, enhance scouting, and refine in-game decision-making."
+        By applying our nested machine learning model, we can help optimize performance for pitchers so that their team can get back in the batter's box and scoring runs."
     )
-    st.markdown("### Key Features:")
-    st.markdown("- **Pitching Statistics**: Pitching and outs statics on the games")
-    st.markdown("- **Team Performance**: Compare teams based on various metrics.")
-    st.markdown(
-        "- **Strikeout Improvement**: Use machine learning to predict optimal pitches that should be thrown to get a player out."
-    )
-    st.markdown(
-        "- **Machine Learning**: For Strikeout Optimization Predicting the most effective pitches to retire batters."
-    )
-    st.markdown(
-        "- **Run Scoring Trends**: Identifying factors that influence offensive production."
-    )
-
+    st.markdown("### Machine Learning: Models and Validation Metrics")
+    st.markdown("""
+                * Models that we used include: **XGBoost**, **TabNet**, and **PyCaret**
+                    * We originally planned on using TabNet for both the regression and categorization of our nested model;\
+                      however that was not the case. We ended up running PyCaret to see which model best fit our data and chose XGBoost for the regression model.
+                * For the classification model with TabNet we used **accuracy**, **F1**, and **precision**.
+                    * We decided to use accuracy as a typical metric, along with F1 as a good metric for balance between precision and recall,\
+                      and precision, specifically, since we are being most cautious with false positives for this model since we don't want to\
+                      expect to have an out or strike and get a ball in play or worse a homerun. 
+                """)
 
 with ml:
     # File uploader
     st.title("Machine Learning")
+    col1, col2, col3 = st.columns(3)
+
+    
+    with col2:
+        st.markdown(
+            """
+            <div style="text-align: center; margin-left: 5%;">
+                <h4>Best Metrics Achieved</h4>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        score = pd.read_csv("Derived_Data/model_pred/scores.csv")
+        score.columns = ["Accuracy", "F1", "Precision"]
+        st.markdown(score.style.hide(axis="index").to_html(), unsafe_allow_html=True)
 
     uploaded_file = st.file_uploader("Upload a CSV or Excel file", type=["csv", "xlsx","parquet"])
     if uploaded_file is not None:
@@ -175,7 +185,7 @@ with outs:
         total_pitches = data["CleanPitchType"].value_counts().reset_index()
         total_pitches.columns = ["CleanPitchType", "TotalPitches"]
         # Count pitches that resulted in a strike (called or swinging)
-        strike_pitches = data[data["PitchCall"].isin(["StrikeCalled", "StrikeSwinging"])]
+        strike_pitches = data[data["CleanPitchCall"].isin(["Strike"])]
         strike_counts = strike_pitches["CleanPitchType"].value_counts().reset_index()
         strike_counts.columns = ["CleanPitchType", "StrikePitches"]
         # Merge both counts
@@ -348,7 +358,7 @@ with outs_by:
             {
                 "KorBB": lambda x: list(x),
                 "PlayResult": lambda x: list(x),
-                "PitchCall": lambda x: list(x)
+                "CleanPitchCall": lambda x: list(x)
             }
         )
         .reset_index()
@@ -367,24 +377,24 @@ with outs_by:
 
     data_clean[mean_type] = data_clean[mean_type].astype(dtype=str)
 
-    # Exploding 'PitchCall' column to have individual rows for each pitch call
-    data_explode = data_clean.explode("PitchCall")
-    data_explode = data_explode[data_explode["PitchCall"].isin(["StrikeCalled", "StrikeSwinging"])]
+    # Exploding 'CleanPitchCall' column to have individual rows for each pitch call
+    data_explode = data_clean.explode("CleanPitchCall")
+    data_explode = data_explode[data_explode["CleanPitchCall"].isin(["Strike"])]
 
     # Create exploded DataFrame for the "Out" or "Strikeout" categories
     data_explode2 = (
         data_explode[
-            (data_explode["PitchCall"].isin(["StrikeCalled", "StrikeSwinging"]))
+            (data_explode["CleanPitchCall"].isin(["Strike"]))
             & (data_explode["BatterResult"].isin(["Out", "Strikeout"]))
         ]
         .groupby([mean_type, "GameID"])
-        .agg(count=("PitchCall", "count"))
+        .agg(count=("CleanPitchCall", "count"))
         .reset_index()
     )
     data_explode2["Only Caused Outs"] = "True"
 
     # Data cleaning for the second part (non-out) pitches
-    data_explode = data_explode.groupby([mean_type, "GameID"]).agg(count=("PitchCall", "count")).reset_index()
+    data_explode = data_explode.groupby([mean_type, "GameID"]).agg(count=("CleanPitchCall", "count")).reset_index()
     data_explode["Only Caused Outs"] = "False"
     data_explode = pd.concat([data_explode, data_explode2])
 
@@ -476,7 +486,7 @@ with appendix:
             ("Outs", "Number of outs before the pitch."),
             ("Balls", "Count of balls before the pitch."),
             ("Strikes", "Count of strikes before the pitch."),
-            ("PitchCall", "Outcome of the pitch (Ball, Strike, etc.)."),
+            ("CleanPitchCall", "Outcome of the pitch (Ball, Strike, etc.)."),
             ("KorBB", "Strikeout (K) or walk (BB)."),
             ("CleanPitchType", "Categorized pitch type (e.g., Fastball, Slider)."),
             ("TaggedHitType", "Manually reviewed hit type (e.g., Line Drive, Fly Ball)."),
@@ -576,4 +586,88 @@ with appendix:
 
     
     with validity_of_data:
-        print("hello")
+        df_valitity = data
+
+        outs_df = df_valitity[df_valitity["OutsOnPlay"] > 0]
+
+        # Define the pitch types to remove
+        excluded_pitches = ["Knuckleball", "OneSeamFastBall", "Sweeper", "Other"]
+
+        # Filter out these pitch types
+        df_valitity = df_valitity[~df_valitity["CleanPitchType"].isin(excluded_pitches)]
+
+        # Count total throws per pitch type
+        total_pitches = df_valitity["CleanPitchType"].value_counts().reset_index()
+        total_pitches.columns = ["CleanPitchType", "TotalPitches"]
+
+        # Count pitches that resulted in a strike (called or swinging)
+        strike_pitches = df_valitity[df_valitity["CleanPitchCall"].isin(["StrikeCalled", "StrikeSwinging"])]
+        strike_counts = strike_pitches["CleanPitchType"].value_counts().reset_index()
+        strike_counts.columns = ["CleanPitchType", "StrikePitches"]
+
+        # Merge both counts
+        pitch_strike_rates = total_pitches.merge(strike_counts, on="CleanPitchType", how="left").fillna(0)
+
+        # Calculate the percentage of throws that resulted in a strike
+        pitch_strike_rates["StrikePercentage"] = (pitch_strike_rates["StrikePitches"] / pitch_strike_rates["TotalPitches"]) * 100
+
+        #Heatmap graph showing pitch location for outs
+        fig = px.density_heatmap(outs_df, x="PlateLocSide", y="PlateLocHeight",
+                                title="Pitch Location for Outs",
+                                labels={"PlateLocSide": "Horizontal Location", "PlateLocHeight": "Vertical Location"},
+                                nbinsx=30, nbinsy=30)
+
+        st.plotly_chart(fig)
+
+        #Scatter plot showing pitch speed and exit velocity 
+        hits_df = df_valitity[df_valitity["PlayResult"].isin(["Single", "Double", "Triple", "HomeRun"])]
+
+        fig = px.scatter(hits_df, x="RelSpeed", y="ExitSpeed", color="CleanPitchType",
+                        title="Pitch Speed vs. Exit Velocity",
+                        labels={"RelSpeed": "Pitch Speed (MPH)", "ExitSpeed": "Exit Velocity (MPH)"})
+
+        st.plotly_chart(fig)
+
+
+        # Filter for hit plays
+        # Create a box plot instead of a scatter plot
+        fig = px.box(hits_df, x="CleanPitchType", y="ExitSpeed", color="CleanPitchType",
+                    title="Exit Velocity by Pitch Type",
+                    labels={"CleanPitchType": "Pitch Type", "ExitSpeed": "Exit Velocity (MPH)"})
+
+        st.plotly_chart(fig)
+
+
+        runs_scored = df_valitity.groupby("Date")["RunsScored"].sum().reset_index()
+        fig = px.line(runs_scored, x="Date", y="RunsScored", 
+                    title="Runs Scored Over Time", 
+                    labels={"RunsScored": "Total Runs", "Date": "Game Date"})
+        st.plotly_chart(fig)
+
+
+        col1,col2= st.columns(2)
+
+        fig = px.box(df_valitity, y="RelHeight", title="Pitch Release Height Distribution",
+                    labels={"RelHeight": "Release Height (feet)"}, color_discrete_sequence=["#5F7082"])
+        
+        with col1 : 
+            st.plotly_chart(fig)
+
+
+
+
+        pitches_per_inning = df_valitity.groupby(["GameID", "Inning"]).size().reset_index(name="Pitches")
+
+        fig = px.box(pitches_per_inning, y="Pitches", title="Pitches Per Inning Distribution",
+                    labels={"Pitches": "Pitches Per Inning"}, color_discrete_sequence=["#B4976B"])
+        with col2 : 
+            st.plotly_chart(fig)
+
+        with future:
+            st.title("The Future")
+            st.markdown("### Accomplishments")
+            st.markdown("- Data Analytics ")
+
+
+            st.markdown("### Future Goals")
+            st.markdown("- **Catcher Model** We want to create a model for the catcher")
