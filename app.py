@@ -106,19 +106,35 @@ with home:
 with ml:
     # File uploader
     st.title("Machine Learning")
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
 
-    
+    with col1:
+        st.markdown(
+            """
+            <div style="text-align: center; margin-right: 25%;">
+                <h4>Starting Metrics</h4>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        prev_score = pd.DataFrame([  
+            [0.644389, 0.494324, 0.524348]  
+        ], columns=["Accuracy", "F1", "Precision"])
+        st.markdown(prev_score.style.hide(axis="index").to_html(), unsafe_allow_html=True)
+
     with col2:
         st.markdown(
             """
-            <div style="text-align: center; margin-left: 5%;">
+            <div style="text-align: center; margin-right: 25%;">
                 <h4>Best Metrics Achieved</h4>
             </div>
             """,
             unsafe_allow_html=True
         )
         score = pd.read_csv("Derived_Data/model_pred/scores.csv")
+        score["accuracy"] = score["accuracy"]
+        score["f1"] = score["f1"]
+        score["precision"] = score["precision"]
         score.columns = ["Accuracy", "F1", "Precision"]
         st.markdown(score.style.hide(axis="index").to_html(), unsafe_allow_html=True)
 
