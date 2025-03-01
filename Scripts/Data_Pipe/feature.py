@@ -5,7 +5,7 @@ from datetime import datetime
 from scipy.stats import entropy  # Entropy helps measure unpredictability in pitch selection
 
 def compute_basic_features(df):
-    basic_features = df.groupby(["PitcherId", "BatterId"]).agg(
+    basic_features = df.groupby(["Date", "PitchNo", "PitcherId", "BatterId"]).agg(
         Avg_Pitch_Speed=("RelSpeed", "mean"),
         Avg_Vertical_Release_Angle=("VertRelAngle", "mean"),
         Avg_Horizontal_Release_Angle=("HorzRelAngle", "mean"),
@@ -18,6 +18,9 @@ def compute_basic_features(df):
         Avg_PlateLocSide=("PlateLocSide", "mean")
     ).reset_index()
 
+    # merge the basic_features back with original df modified by the same groupby
+    basic_features = df.merge(basic_features, on=["Date", "PitchNo", "PitcherId", "BatterId"])
+
     return basic_features
 
 def compute_advanced_features(df):
@@ -28,7 +31,7 @@ def compute_advanced_features(df):
         pitch_counts = pitches.value_counts(normalize=True)
         return entropy(pitch_counts)
 
-    advanced_features = df.groupby(["PitcherId", "BatterId"]).agg(
+    advanced_features = df.groupby(["Date", "PitchNo", "PitcherId", "BatterId"]).agg(
         Pitch_Type_Diversity=("TaggedPitchType", lambda x: x.nunique()),
         Max_Effective_Velocity=("EffectiveVelo", "max"),
         Avg_Velocity_Drop=("SpeedDrop", "mean"),
@@ -41,73 +44,80 @@ def compute_advanced_features(df):
         Avg_Hit_Exit_Velocity=("ExitSpeed", "mean")
     ).reset_index()
 
-    return advanced_features
-def compute_more_advanced_features(df):
+    # merge the advance_features back with original df modified by the same groupby
+    advanced_features_df = df.merge(advanced_features, on=["Date", "PitchNo", "PitcherId", "BatterId"])
 
+    return advanced_features_df
+
+def compute_more_advanced_features(df):
+    """
+    Computes advanced features for pitch-level data, including smoothed metrics for 
+    hit probability, strikeout likelihood, and batter strikeout tendency.
+    Smoothed Pobanility: alpha = 1, beta = 2 often
+    """
+    
+    # Helper functions for pitch-level features
     def pitch_variance(pitches):
-        """Measures how diverse the pitch selection is for a specific pitcher-batter matchup.
-        If the pitcher keeps throwing the same pitch, variance will be low."""
         return pitches.nunique() / len(pitches) if len(pitches) > 0 else 0
 
     def speed_consistency(speeds):
-        """Measures how consistent the pitch speeds are. A lower standard deviation means a pitcher is keeping their speed steady."""
         return speeds.std()
 
     def breaking_vs_fastball_ratio(pitches):
-        """Calculates the ratio of breaking balls (curveballs, sliders) to fastballs.
-        Some pitchers rely more on off-speed pitches, while others dominate with heat."""
         breaking_balls = pitches.str.contains("Curve|Slider", na=False).sum()
         fastballs = pitches.str.contains("Fastball", na=False).sum()
-        return breaking_balls / (fastballs + 1)  # Adding 1 to avoid division by zero
+        return breaking_balls / (fastballs + 1)  # Avoid division by zero
 
-    def strikeout_likelihood(play_results):
-        """Estimates the likelihood of a strikeout happening in a given pitcher-batter matchup."""
-        return (play_results == "Strikeout").sum() / len(play_results) if len(play_results) > 0 else 0
+    # New helper for Laplace smoothing
+    def smoothed_probability(series, event, alpha=1, beta=2):
+        count = (series == event).sum()
+        return (count + alpha) / (len(series) + beta) if len(series) > 0 else 0
 
-    more_advanced_features = df.groupby(["PitcherId", "BatterId"]).agg(
-        # Measures the unpredictability of the pitch sequence—higher values mean the pitcher mixes things up.
-        Pitch_Type_Variance=("TaggedPitchType", pitch_variance),
-
-        # Captures how consistent the pitcher's velocity is—low values mean they keep their speed steady.
+    # ----------------------------
+    # Compute pitch-level features
+    # ----------------------------
+    pitch_level_features = df.groupby(["Date", "PitchNo", "PitcherId", "BatterId"]).agg(
+        Pitch_Type_Variance=("CleanPitchType", pitch_variance),
         Speed_Consistency=("RelSpeed", speed_consistency),
-
-        # Tracks how often a pitcher throws breaking balls vs. fastballs—important for deception.
-        Breaking_vs_Fastball_Ratio=("TaggedPitchType", breaking_vs_fastball_ratio),
-
-        # Looks at how often this specific pitcher-batter matchup results in a strikeout.
-        Strikeout_Likelihood=("PlayResult", strikeout_likelihood),
-
-        # Measures the average horizontal movement of pitches—big movers are harder to hit.
+        Breaking_vs_Fastball_Ratio=("CleanPitchType", breaking_vs_fastball_ratio),
         Avg_Horizontal_Movement=("HorzBreak", "mean"),
-
-        # Measures the average vertical drop on pitches—key for curveballs and fastballs with sink.
         Avg_Vertical_Movement=("InducedVertBreak", "mean"),
-
-        # Checks how much velocity changes from pitch to pitch—some pitchers mix speeds well.
         Change_in_Speed_Per_Pitch=("RelSpeed", lambda x: x.diff().mean(skipna=True)),
-
-        # Estimates the probability of a batter making solid contact and getting a hit.
-        Hit_Probability=("PlayResult", lambda x: (x == "Hit").sum() / len(x)),
-
-        # Measures how often this specific batter strikes out in general.
-        Batter_Strikeout_Tendency=("BatterId", lambda x: (df.loc[x.index, "PlayResult"] == "Strikeout").sum() / len(x)),
-
-        # Looks at how aggressive a pitcher is—do they attack the zone early or nibble?
         Pitcher_Aggressiveness=("Balls", lambda x: (x == 0).sum() / len(x))
-
     ).reset_index()
 
-    return more_advanced_features
+    # ----------------------------------------
+    # Compute matchup-level features with smoothing
+    # (aggregated over all pitches between a pitcher and batter)
+    # ----------------------------------------
+    matchup_features = df.groupby(["PitcherId", "BatterId"]).agg(
+        Hit_Probability=("PlayResult", lambda x: smoothed_probability(x, "Hit", alpha=1, beta=2)),
+        Strikeout_Likelihood=("PlayResult", lambda x: smoothed_probability(x, "Strikeout", alpha=1, beta=2))
+    ).reset_index()
 
+    # ----------------------------------------
+    # Compute batter-level features with smoothing
+    # (aggregated over all pitches faced by the batter)
+    # ----------------------------------------
+    batter_features = df.groupby("BatterId").agg(
+        Batter_Strikeout_Tendency=("PlayResult", lambda x: smoothed_probability(x, "Strikeout", alpha=1, beta=2))
+    ).reset_index()
 
+    # ----------------------------------------
+    # Merge the advanced features back to the pitch-level DataFrame
+    # ----------------------------------------
+    combined_features = pitch_level_features.merge(matchup_features, on=["PitcherId", "BatterId"], how="left")
+    combined_features = combined_features.merge(batter_features, on="BatterId", how="left")
+    final_df = df.merge(combined_features, on=["Date", "PitchNo", "PitcherId", "BatterId"], how="left")
 
+    return final_df
 
 # ======================================
 # Main Pipe
 # ====================================
 
 def feature_pipe():
-    input_file = "Derived_Data/filter/filtered_20250228_231053.parquet"
+    input_file = "Derived_Data/filter/filtered_20250301_031659.parquet"
     
     if not os.path.exists(input_file):
         print(f"Input file not found: {input_file}")

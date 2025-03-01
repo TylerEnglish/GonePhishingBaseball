@@ -120,26 +120,6 @@ def features(df):
     df = df.copy(deep=True)
     return df
 
-def fill_missing_values(df, exclude_columns=None):
-    if exclude_columns is None:
-        exclude_columns = ["PitchofPA", "PitchCall", "PitchType", "CleanPitchType", "PitcherId", "BatterId"]
-
-    # Identify columns that should be modified
-    columns_to_fill = [col for col in df.columns if col not in exclude_columns]
-
-    # Optionally convert selected columns to object dtype for string replacements
-    df.loc[:, columns_to_fill] = df.loc[:, columns_to_fill].astype(object)
-
-    # Replace a list of possible missing-value strings with np.nan
-    df.loc[:, columns_to_fill] = df.loc[:, columns_to_fill].replace(
-        to_replace=['NaN', 'nan', 'NULL', 'null', 'None'],
-        value=np.nan
-    )
-
-    # Fill all genuine missing values (np.nan, None, pd.NA) with "no recorded value"
-    df.loc[:, columns_to_fill] = df.loc[:, columns_to_fill].fillna('no recorded value')
-
-    return df
 
 def filter_pipe():
     input_file = "Derived_Data/clean/cleaned_20250228_235946.parquet"
@@ -152,8 +132,6 @@ def filter_pipe():
     
     df = features(df)
     df = df.copy(deep=True)
-    # df =fill_missing_values(df)
-    # df = df.copy(deep=True)
 
     output_dir = "derived_data/filter"
     os.makedirs(output_dir, exist_ok=True)

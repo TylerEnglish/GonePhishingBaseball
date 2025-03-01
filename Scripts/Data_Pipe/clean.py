@@ -2,6 +2,7 @@ import pandas as pd
 import os
 from datetime import datetime
 import regex as re
+import numpy as np
 
 def join(base_path="Raw_Data/GameData"):
     all_csv_files = []
@@ -48,14 +49,14 @@ def clean_baseball(df):
   clean_df['TaggedHitType'] = clean_df['TaggedHitType'].replace(r'(?i)^undefined', pd.NA, regex=True)
   clean_df['CleanHitType'] = clean_df['TaggedHitType'].fillna(clean_df['AutoHitType'])
 
-  df["CleanPitchCall"] = df["PitchCall"].apply(lambda x: 
+  clean_df["CleanPitchCall"] = clean_df["PitchCall"].apply(lambda x: 
       "Strike" if "strike" in str(x).lower() else 
       "Ball" if "ball" in str(x).lower() else 
       "Hit" if "inplay" in str(x).lower() else 
       "Walk" if "hitbypitch" in str(x).lower() else                                       
       "Foul" if "foul" in str(x).lower() else x
   )
-  df["CleanPitchType"] = df["CleanPitchType"].apply(lambda x:  
+  clean_df["CleanPitchType"] = clean_df["CleanPitchType"].apply(lambda x:  
      "ChangeUp" if re.search(r'(?i)^changeup$', str(x)) else  # Case insensitive match for Changeup
     "TwoSeamFastBall" if re.search(r'(?i)(twoseamfastball|oneseamfastball)', str(x)) else x 
   )
@@ -63,11 +64,35 @@ def clean_baseball(df):
 
   return clean_df
 
+def fill_missing_values(df, exclude_columns=None):
+    if exclude_columns is None:
+        exclude_columns = ["PitchofPA", "PitchCall", "PitchType", "CleanPitchType", "PitcherId", "BatterId"]
+
+    # # Identify columns that should be modified
+    # columns_to_fill = [col for col in df.columns if col not in exclude_columns]
+
+    # # Optionally convert selected columns to object dtype for string replacements
+    # df.loc[:, columns_to_fill] = df.loc[:, columns_to_fill].astype(object)
+
+    # # Replace a list of possible missing-value strings with np.nan
+    # df.loc[:, columns_to_fill] = df.loc[:, columns_to_fill].replace(
+    #     to_replace=['NaN', 'nan', 'NULL', 'null', 'None'],
+    #     value=np.nan
+    # )
+
+    # # Fill all genuine missing values (np.nan, None, pd.NA) with "no recorded value"
+    # df.loc[:, columns_to_fill] = df.loc[:, columns_to_fill].fillna('no recorded value')
+    df.fillna('no recorded value')
+
+    return df
+
 def clean_pipe():
     df = join()
-    df.copy(deep=True)
+    df = df.copy(deep=True)
     df = clean_baseball(df=df)
-    df.copy(deep=True)
+    df = df.copy(deep=True)
+    df = fill_missing_values(df)
+    df = df.copy(deep=True)
     output_dir = "derived_data/clean"
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

@@ -8,7 +8,7 @@ from sklearn.preprocessing import LabelEncoder
 from pytorch_tabnet.tab_model import TabNetClassifier
 import torch
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, f1_score
 
 # ==================================
 # Scripting Functions
@@ -74,12 +74,24 @@ def train(df, model, encoders, feature_cols, target_col):
 
 def validate(model, X_valid, y_valid):
     """
-    Evaluate the trained model on the validation set and print accuracy.
+    Evaluate the trained model on the validation set and print Accuracy and F1-score.
+    
+    Returns a dictionary with keys: "accuracy" and "f1".
     """
+    # Generate predictions
     preds = model.predict(X_valid)
+    
+    # Calculate accuracy
     acc = accuracy_score(y_valid, preds)
-    print(f"Validation Accuracy: {acc:.4f}")
-    return acc
+    
+    # Calculate F1-score (macro average by default)
+    f1 = f1_score(y_valid, preds, average="macro")
+    
+    # Print the results
+    print(f"Validation Accuracy: {acc:.4f}, F1-score (macro): {f1:.4f}")
+    
+    # Return as a dictionary
+    return {"accuracy": acc, "f1": f1}
 
 # ================================================
 # Main Predict Function

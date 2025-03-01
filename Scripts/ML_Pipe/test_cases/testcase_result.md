@@ -60,3 +60,61 @@ Predicted PitchofPA for Pitcher 1000066910.0 vs Batter 1000032366.0: 2.91
 The `TabNetRegressor` was trained for **40 epochs**, with early stopping selecting **epoch 30** as the best checkpoint. The model showed steady improvement in the initial epochs, reducing `RMSE` from `1.59332` at epoch 0 to `0.69054` at epoch 30, which became the lowest validation RMSE achieved. However, after this point, `RMSE` values fluctuated significantly, with extreme spikes such as `1.4488` at epoch 29 and `2.44623` at epoch 36, suggesting potential `overfitting` or `instability` in training.
 
 Despite these fluctuations, the final selected model produced a validation `RMSE` of `0.6905`, which indicates a plateau where further training is **unlikely to yield improvements**. The prediction for Pitcher 1000066910.0 vs Batter 1000032366.0 resulted in a PitchofPA of **2.91**, aligning with the trained model’s performance. To lower RMSE further, improvements such as **feature engineering, hyperparameter tuning, data augmentation, or alternative models (e.g., XGBoost, LightGBM) should be explored** to enhance generalization and reduce prediction error.
+
+
+## Pycarrot Class
+
+### Results
+ Description                                              Value
+0                    Session id                                                 42
+1                        Target                                          PitchCall
+2                   Target type                                         Multiclass
+3                Target mapping  BallCalled: 0, BallIntentional: 1, BallinDirt:...
+4           Original data shape                                       (167081, 70)
+5        Transformed data shape                                      (167081, 132)
+6   Transformed train set shape                                      (116956, 132)
+7    Transformed test set shape                                       (50125, 132)
+8              Numeric features                                                 54
+9          Categorical features                                                 15
+10                   Preprocess                                               True
+11              Imputation type                                             simple
+12           Numeric imputation                                               mean
+13       Categorical imputation                                               mode
+14     Maximum one-hot encoding                                                 25
+15              Encoding method                                               None
+16               Fold Generator                                    StratifiedKFold
+17                  Fold Number                                                 10
+18                     CPU Jobs                                                 -1
+19                      Use GPU                                              False
+11              Imputation type                                             simple
+12           Numeric imputation                                               mean
+13       Categorical imputation                                               mode
+14     Maximum one-hot encoding                                                 25
+15              Encoding method                                               None
+16               Fold Generator                                    StratifiedKFold
+11              Imputation type                                             simple
+12           Numeric imputation                                               mean
+13       Categorical imputation                                               mode
+11              Imputation type                                             simple
+12           Numeric imputation                                               mean
+13       Categorical imputation                                               mode
+14     Maximum one-hot encoding                                                 25
+15              Encoding method                                               None
+16               Fold Generator                                    StratifiedKFold
+17                  Fold Number                                                 10
+18                     CPU Jobs                                                 -1
+19                      Use GPU                                              False
+20               Log Experiment                                              False
+21              Experiment Name                                   clf-default-name
+22                          USI                                               5b14
+
+
+### Explanation
+Takes forever for mediorcer results.
+
+
+## Pycarrot Reg
+
+### Results
+
+### Explanations

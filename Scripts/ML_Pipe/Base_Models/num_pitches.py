@@ -8,7 +8,6 @@ from sklearn.metrics import mean_squared_error
 from pytorch_tabnet.tab_model import TabNetRegressor
 import torch
 
-
 # ==================================
 # Scripting Functions
 # ==================================
@@ -169,6 +168,8 @@ def validate_model(model: TabNetRegressor, X_valid, y_valid) -> float:
         float: The RMSE score.
     """
     preds = model.predict(X_valid)
+    # Convert predictions to integers
+    preds = np.ceil(preds).astype(int)
     rmse = np.sqrt(mean_squared_error(y_valid, preds))
     print(f"Validation RMSE: {rmse:.4f}")
     return rmse
@@ -189,7 +190,7 @@ def predict(pitcher: float, batter: float, model: TabNetRegressor, scaler: Stand
         df (pd.DataFrame): The aggregated and preprocessed DataFrame.
     
     Returns:
-        float or None: The predicted PitchofPA, or None if no matching row is found.
+        int or None: The predicted PitchofPA as an integer, or None if no matching row is found.
     """
     row = df[(df["PitcherId"] == pitcher) & (df["BatterId"] == batter)]
     if row.empty:
@@ -198,9 +199,11 @@ def predict(pitcher: float, batter: float, model: TabNetRegressor, scaler: Stand
     feature_cols = [col for col in df.columns if col != "PitchofPA"]
     X_new = row[feature_cols].values
     X_new_scaled = scaler.transform(X_new)
+    
+    # Model returns an array; we convert to int
     pred = model.predict(X_new_scaled)
-    prediction = pred[0][0]
-    print(f"Predicted PitchofPA for Pitcher {pitcher} vs Batter {batter}: {prediction:.2f}")
+    prediction = int(np.ceil(pred[0][0]))
+    print(f"Predicted PitchofPA for Pitcher {pitcher} vs Batter {batter}: {prediction}")
     return prediction
 
 # =====================================
@@ -223,6 +226,7 @@ def model_train():
     """
     data_path = "Derived_Data/filter/filtered_20250301_000033.parquet"  
     if not os.path.exists(data_path):
+        print(f"Data file not found at: {data_path}")
         return None, None, None, None
 
     table = pq.read_table(source=data_path)
@@ -243,8 +247,8 @@ def model_train():
 
 if __name__ == "__main__":
     reg_model, scaler, df_agg, feature_cols = model_train()
-    if reg_model is not None:
-        # Sample PitcherId and BatterId values; update as needed.
+    if reg_model is not None and scaler is not None and df_agg is not None:
+        # Example usage
         pitcher_id = 1000066910.0
         batter_id = 1000032366.0
         predict(pitcher_id, batter_id, reg_model, scaler, df_agg)
