@@ -224,7 +224,7 @@ def model_train():
             - The aggregated and preprocessed DataFrame.
             - The list of feature column names.
     """
-    data_path = "Derived_Data/filter/filtered_20250301_000033.parquet"  
+    data_path = "Derived_Data/feature/nDate_feature.parquet"  
     if not os.path.exists(data_path):
         print(f"Data file not found at: {data_path}")
         return None, None, None, None

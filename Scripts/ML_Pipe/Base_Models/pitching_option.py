@@ -8,7 +8,7 @@ from sklearn.preprocessing import LabelEncoder
 from pytorch_tabnet.tab_model import TabNetClassifier
 import torch
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score, f1_score
+from sklearn.metrics import accuracy_score, f1_score, precision_score
 
 # ==================================
 # Scripting Functions
@@ -75,9 +75,9 @@ def train(df, model, encoders, feature_cols, target_col):
 
 def validate(model, X_valid, y_valid):
     """
-    Evaluate the trained model on the validation set and print Accuracy and F1-score.
+    Evaluate the trained model on the validation set and print Accuracy, F1-score, and Precision.
     
-    Returns a dictionary with keys: "accuracy" and "f1".
+    Returns a dictionary with keys: "accuracy", "f1", and "precision".
     """
     # Generate predictions
     preds = model.predict(X_valid)
@@ -88,11 +88,14 @@ def validate(model, X_valid, y_valid):
     # Calculate F1-score (macro average by default)
     f1 = f1_score(y_valid, preds, average="macro")
     
+    # Calculate precision (macro average)
+    precision = precision_score(y_valid, preds, average="macro")
+    
     # Print the results
-    print(f"Validation Accuracy: {acc:.4f}, F1-score (macro): {f1:.4f}")
+    print(f"Validation Accuracy: {acc:.4f}, F1-score (macro): {f1:.4f}, Precision (macro): {precision:.4f}")
     
     # Return as a dictionary
-    return {"accuracy": acc, "f1": f1}
+    return {"accuracy": acc, "f1": f1, "precision": precision}
 
 # ================================================
 # Main Predict Function
@@ -164,7 +167,7 @@ def predict(pitcher, batter, model, scaler, encoders, df, feature_cols, target_c
     # Determine best pitch based on maximum average probability for "StrikeCalled".
     if "Strike" in results_df.columns:
         best_idx = results_df["Strike"].idxmax()
-        best_pitch = results_df.loc[best_idx, "CleanPitchType"]
+        best_pitch = results_df.loc[best_idx, "PitchType"]
         print(f"Recommended pitch: {best_pitch} with {results_df.loc[best_idx, 'Strike']}% chance for 'Strike'")
     else:
         best_pitch = None
@@ -231,15 +234,15 @@ def model_train(data_path="data.parquet"):
     model = build_model()
     model, scaler, X_valid, y_valid = train(df, model, encoders, feature_cols, target_col)
     
-    validate(model, X_valid, y_valid)
+    scores = validate(model, X_valid, y_valid)
     
-    return model, scaler, encoders, feature_cols, target_col, df
+    return model, scaler, encoders, feature_cols, target_col, df, scores
 
 # =====================================
 # Main Execution
 # =====================================
 if __name__ == "__main__":
-    data_path = "Derived_Data/4filter/filtered_20250301_000033.parquet"
+    data_path = "Derived_Data/feature/nDate_feature.parquet"  
     model, scaler, encoders, feature_cols, target_col, df = model_train(data_path=data_path)
     
     if model is not None:

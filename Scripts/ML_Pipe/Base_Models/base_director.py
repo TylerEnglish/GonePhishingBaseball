@@ -118,7 +118,7 @@ def train():
     
     print("Training classification model...")
     data_path = "Derived_Data/feature/nDate_feature.parquet"
-    cls_model, cls_scaler, encoders, feature_cols_cls, target_col, df_cls = train_cls(data_path)
+    cls_model, cls_scaler, encoders, feature_cols_cls, target_col, df_cls, scores = train_cls(data_path)
     
     models = {
         "reg_model": reg_model,
@@ -134,7 +134,7 @@ def train():
         "target_col": target_col,
         "df_cls": df_cls
     }
-    return models, extras
+    return models, extras, scores
 
 def load_pickle_zip(filepath):
     """
@@ -266,16 +266,19 @@ def training_pipe():
       3) Run predictions with default pitcher/batter IDs
     """
     print("Starting training pipeline...")
-    models, extras = train()
+    models, extras, score = train()
     save_models(models, extras)  # also saves and zips the pickled 'extras'
     
     print("\n--- Running a quick test prediction ---\n")
     df_reg, df_cls = predict()  # with default IDs
+    
     print("\n--- Regression results sample ---")
     print(df_reg.head())
     print("\n--- Classification results sample ---")
     print(df_cls.head())
     print("\nTraining pipeline completed.")
+    score_df = pd.DataFrame([score])
+    score_df.to_csv("Derived_Data/model_pred/scores.csv", index=False)
 
 
 if __name__ == "__main__":
