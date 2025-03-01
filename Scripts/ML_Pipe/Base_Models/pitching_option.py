@@ -123,7 +123,6 @@ def predict(pitcher, batter, model, scaler, encoders, df, feature_cols, target_c
     
     results = []
     for pitch in candidate_pitches:
-        # Simulate candidate pitch by replacing CleanPitchType in all rows of base_data.
         simulated_data = base_data.copy()
         simulated_data["CleanPitchType"] = pitch
         
@@ -157,8 +156,8 @@ def predict(pitcher, batter, model, scaler, encoders, df, feature_cols, target_c
     else:
         best_pitch = None
     
-    print(f"\nPrediction results for Pitcher {pitcher} vs Batter {batter}:")
-    print(results_df.to_string(index=False))
+    # print(f"\nPrediction results for Pitcher {pitcher} vs Batter {batter}:")
+    # print(results_df.to_string(index=False))
     
     return best_pitch, results_df
 

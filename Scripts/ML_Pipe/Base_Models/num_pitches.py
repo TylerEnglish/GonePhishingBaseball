@@ -8,12 +8,23 @@ from sklearn.metrics import mean_squared_error
 from pytorch_tabnet.tab_model import TabNetRegressor
 import torch
 
+
+# ==================================
+# Scripting Functions
+# ==================================
+
 def data_transform(df: pd.DataFrame) -> pd.DataFrame:
     """
     Aggregate raw pitch data by PitcherId and BatterId.
     - For 'PitchofPA': use the maximum value.
     - For numeric columns: use the mean.
     - For categorical columns: take the first occurrence.
+    
+    Parameters:
+        df (pd.DataFrame): The raw pitch data.
+    
+    Returns:
+        pd.DataFrame: The aggregated DataFrame.
     """
     agg_dict = {}
     for col in df.columns:
@@ -31,6 +42,9 @@ def data_transform(df: pd.DataFrame) -> pd.DataFrame:
 def build_model() -> TabNetRegressor:
     """
     Build and return a TabNet regression model.
+    
+    Returns:
+        TabNetRegressor: The constructed model.
     """
     model = TabNetRegressor(
         n_d=8,
@@ -44,10 +58,77 @@ def build_model() -> TabNetRegressor:
     )
     return model
 
+def prepare_data(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Prepares the data by performing:
+      - Aggregation by PitcherId and BatterId.
+      - Conversion of datetime columns to numeric.
+      - Missing value imputation:
+            * Numeric columns: fill with the median (or 0 if median is NaN).
+            * Categorical columns: fill with "Missing".
+      - Conversion of non-numeric features to strings.
+      - Label encoding for categorical features.
+    
+    Parameters:
+        df (pd.DataFrame): The raw input DataFrame.
+    
+    Returns:
+        pd.DataFrame: The preprocessed and aggregated DataFrame.
+    """
+    df_agg = data_transform(df)
+
+    # Convert datetime columns to numeric (int64)
+    for col in df_agg.columns:
+        if pd.api.types.is_datetime64_any_dtype(df_agg[col]):
+            df_agg[col] = df_agg[col].astype("int64")
+    
+    # Fill missing values for each column except the target
+    for col in df_agg.columns:
+        if col == "PitchofPA":
+            continue
+        if np.issubdtype(df_agg[col].dtype, np.number):
+            median_val = df_agg[col].median()
+            if np.isnan(median_val):
+                df_agg[col] = df_agg[col].fillna(0)
+            else:
+                df_agg[col] = df_agg[col].fillna(median_val)
+        else:
+            df_agg[col] = df_agg[col].fillna("Missing")
+    
+    # Drop rows where the target is missing
+    df_agg = df_agg.dropna(subset=["PitchofPA"])
+    
+    # Convert non-numeric features to strings before label encoding
+    feature_cols = [col for col in df_agg.columns if col != "PitchofPA"]
+    for col in feature_cols:
+        if not np.issubdtype(df_agg[col].dtype, np.number):
+            df_agg[col] = df_agg[col].astype(str)
+    
+    # Label encode categorical columns
+    cat_cols = df_agg.select_dtypes(include=["object", "category"]).columns.tolist()
+    encoders = {}
+    for col in cat_cols:
+        le = LabelEncoder()
+        df_agg[col] = le.fit_transform(df_agg[col])
+        encoders[col] = le
+    
+    return df_agg
+
 def train_model(df: pd.DataFrame, model: TabNetRegressor):
     """
-    Split the data, scale features, and train the TabNet model.
-    Returns the trained model, scaler, validation data, and feature columns.
+    Splits the data, scales features, and trains the TabNet model.
+    
+    Parameters:
+        df (pd.DataFrame): Preprocessed data including the target "PitchofPA".
+        model (TabNetRegressor): The untrained TabNet model.
+    
+    Returns:
+        Tuple containing:
+            - Trained TabNet model.
+            - Fitted StandardScaler.
+            - Scaled validation features.
+            - Validation target values.
+            - List of feature column names.
     """
     feature_cols = [col for col in df.columns if col != "PitchofPA"]
     X = df[feature_cols].values
@@ -78,15 +159,37 @@ def train_model(df: pd.DataFrame, model: TabNetRegressor):
 def validate_model(model: TabNetRegressor, X_valid, y_valid) -> float:
     """
     Evaluate the trained model on the validation set using RMSE.
+    
+    Parameters:
+        model (TabNetRegressor): The trained model.
+        X_valid (np.ndarray): Scaled validation features.
+        y_valid (np.ndarray): Validation target values.
+    
+    Returns:
+        float: The RMSE score.
     """
     preds = model.predict(X_valid)
     rmse = np.sqrt(mean_squared_error(y_valid, preds))
     print(f"Validation RMSE: {rmse:.4f}")
     return rmse
 
+# ================================================
+# Main Predict Function
+# ================================================
+
 def predict(pitcher: float, batter: float, model: TabNetRegressor, scaler: StandardScaler, df: pd.DataFrame):
     """
     Predict PitchofPA for a given PitcherId and BatterId.
+    
+    Parameters:
+        pitcher (float): The PitcherId.
+        batter (float): The BatterId.
+        model (TabNetRegressor): The trained model.
+        scaler (StandardScaler): The fitted scaler.
+        df (pd.DataFrame): The aggregated and preprocessed DataFrame.
+    
+    Returns:
+        float or None: The predicted PitchofPA, or None if no matching row is found.
     """
     row = df[(df["PitcherId"] == pitcher) & (df["BatterId"] == batter)]
     if row.empty:
@@ -100,61 +203,33 @@ def predict(pitcher: float, batter: float, model: TabNetRegressor, scaler: Stand
     print(f"Predicted PitchofPA for Pitcher {pitcher} vs Batter {batter}: {prediction:.2f}")
     return prediction
 
+# =====================================
+# Director Function
+# =====================================
+
 def model_train():
     """
-    Director function:
+    Director function that:
       - Loads data from a parquet file.
-      - Aggregates data by PitcherId and BatterId.
-      - Converts datetime columns to numeric.
-      - Fills missing values:
-            * Numeric columns with the median (or 0 if median is NaN).
-            * Categorical columns with "Missing".
-      - Converts non-numeric features to strings and label-encodes them.
-      - Trains the TabNet model and validates using RMSE.
-    Returns the trained model, scaler, aggregated dataframe, and feature columns.
+      - Prepares the data (aggregation, conversion, missing value imputation, encoding).
+      - Trains the TabNet model and validates it using RMSE.
+    
+    Returns:
+        Tuple containing:
+            - The trained TabNet model.
+            - The fitted StandardScaler.
+            - The aggregated and preprocessed DataFrame.
+            - The list of feature column names.
     """
     data_path = "Derived_Data/filter/filtered_20250301_000033.parquet"  
     if not os.path.exists(data_path):
-        print(f"Data file not found: {data_path}")
         return None, None, None, None
 
-    # Load data and perform aggregation
     table = pq.read_table(source=data_path)
     df = table.to_pandas()
-    df_agg = data_transform(df)
     
-    # Convert datetime columns to numeric (int64)
-    for col in df_agg.columns:
-        if pd.api.types.is_datetime64_any_dtype(df_agg[col]):
-            df_agg[col] = df_agg[col].astype("int64")
+    df_agg = prepare_data(df)
     
-    # Fill missing values
-    for col in df_agg.columns:
-        if col == "PitchofPA":
-            continue
-        if np.issubdtype(df_agg[col].dtype, np.number):
-            median_val = df_agg[col].median()
-            df_agg[col] = df_agg[col].fillna(0 if np.isnan(median_val) else median_val)
-        else:
-            df_agg[col] = df_agg[col].fillna("Missing")
-    
-    # Drop rows with missing target values
-    df_agg = df_agg.dropna(subset=["PitchofPA"])
-    
-    # Convert non-numeric features 
-    feature_cols = [col for col in df_agg.columns if col != "PitchofPA"]
-    for col in feature_cols:
-        if not np.issubdtype(df_agg[col].dtype, np.number):
-            df_agg[col] = df_agg[col].astype(str)
-    
-    # Label encode categorical columns
-    cat_cols = df_agg.select_dtypes(include=["object", "category"]).columns.tolist()
-    encoders = {}
-    for col in cat_cols:
-        le = LabelEncoder()
-        df_agg[col] = le.fit_transform(df_agg[col])
-        encoders[col] = le
-
     # Build and train the model
     reg_model = build_model()
     reg_model, scaler, X_valid, y_valid, feature_cols = train_model(df_agg, reg_model)
@@ -162,9 +237,14 @@ def model_train():
     
     return reg_model, scaler, df_agg, feature_cols
 
+# =====================================
+# Main Execution
+# =====================================
+
 if __name__ == "__main__":
     reg_model, scaler, df_agg, feature_cols = model_train()
     if reg_model is not None:
+        # Sample PitcherId and BatterId values; update as needed.
         pitcher_id = 1000066910.0
         batter_id = 1000032366.0
         predict(pitcher_id, batter_id, reg_model, scaler, df_agg)
