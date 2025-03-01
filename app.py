@@ -172,7 +172,7 @@ with runs:
                 top_pitches = st.number_input("Bottom N Pitches for Runs Scored", min_value=3, max_value=len(pitch_types), value=5, step=1, format="%d")
 
         top_n_pitches = pitch_types[:top_pitches]
-        runs_per_pitch = runs_per_pitch[pitch_counts["CleanPitchType"].isin(top_n_pitches)]
+        runs_per_pitch = runs_per_pitch[runs_per_pitch["CleanPitchType"].isin(top_n_pitches)]
 
 
         runs_per_pitch = runs_per_pitch.sort_values('RunsScored')
@@ -221,14 +221,15 @@ with runs:
                 top_pitches = st.number_input("Top N Pitches for Outs", min_value=3, max_value=len(pitch_types), value=5, step=1, format="%d")
 
         top_n_pitches = pitch_types[:top_pitches]
-        last_pitch_result = last_pitch_result[pitch_counts["CleanPitchType"].isin(top_n_pitches)]
+        last_pitch_result = last_pitch_result[last_pitch_result["LastPitch"].isin(top_n_pitches)]
 
         # Create a Plotly bar plot
-        fig = px.scatter(
+        fig = px.bar(
             last_pitch_result,
             x="LastPitch",
             y="count",
             color="BatterResult",
+            barmode='group',
             color_discrete_sequence=colors,
             title="Runs Scored by Pitch Type and Team",
             labels={"LastPitch": "Pitch Type", "count": "Result of At Bat Count"},
