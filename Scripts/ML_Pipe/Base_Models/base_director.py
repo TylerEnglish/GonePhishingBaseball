@@ -10,8 +10,8 @@ if __name__ == "__main__":
     from num_pitches import model_train as train_reg, predict as predict_reg
     from pitching_option import model_train as train_cls, predict as predict_cls
 else:
-    from ML_Pipe.Base_Models.num_pitches import model_train as train_reg, predict as predict_reg, build_model as build_reg_model
-    from ML_Pipe.Base_Models.pitching_option import model_train as train_cls, predict as predict_cls, build_model as build_cls_model
+    from Scripts.ML_Pipe.Base_Models.num_pitches import model_train as train_reg, predict as predict_reg, build_model as build_reg_model
+    from Scripts.ML_Pipe.Base_Models.pitching_option import model_train as train_cls, predict as predict_cls, build_model as build_cls_model
 
 
 # =================================
