@@ -239,7 +239,7 @@ def model_train(data_path="data.parquet"):
 # Main Execution
 # =====================================
 if __name__ == "__main__":
-    data_path = "Derived_Data/filter/filtered_20250301_000033.parquet"
+    data_path = "Derived_Data/4filter/filtered_20250301_000033.parquet"
     model, scaler, encoders, feature_cols, target_col, df = model_train(data_path=data_path)
     
     if model is not None:

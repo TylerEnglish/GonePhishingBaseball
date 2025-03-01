@@ -238,23 +238,19 @@ def predict(pitcher_ids=None, batter_ids=None, n_pitches=10):
                 temp_df["BatterId"] = b_id
                 temp_df["PitchNumber"] = pitch_number
                 temp_df["RecommendedPitch"] = best_pitch
-                cls_records.append(temp_df)
+                cls_records.append(temp_df)# Save results in Derived_Data/model_pred
+                out_dir = "Derived_Data/model_pred"
+                if not os.path.exists(out_dir):
+                    os.makedirs(out_dir)
+                df_cls = pd.concat(cls_records, ignore_index=True) if cls_records else pd.DataFrame()
+                reg_out_path = os.path.join(out_dir, f"reg_prediction_report_{p_id}_{b_id}.csv")
+                cls_out_path = os.path.join(out_dir, f"cls_prediction_report_{p_id}_{b_id}.csv")
+                df_reg.to_csv(reg_out_path, index=False)
+                df_cls.to_csv(cls_out_path, index=False)
 
-    df_cls = pd.concat(cls_records, ignore_index=True) if cls_records else pd.DataFrame()
-
-    # Save results in Derived_Data/model_pred
-    out_dir = "Derived_Data/model_pred"
-    if not os.path.exists(out_dir):
-        os.makedirs(out_dir)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    reg_out_path = os.path.join(out_dir, f"reg_prediction_report_{timestamp}.csv")
-    cls_out_path = os.path.join(out_dir, f"cls_prediction_report_{timestamp}.csv")
-    df_reg.to_csv(reg_out_path, index=False)
-    df_cls.to_csv(cls_out_path, index=False)
-
-    print(f"\nSaved regression results to {reg_out_path}")
-    print(f"Saved classification results to {cls_out_path}\n")
+                print(f"\nSaved regression results to {reg_out_path}")
+                print(f"Saved classification results to {cls_out_path}\n")
+    
 
     return df_reg, df_cls
 
