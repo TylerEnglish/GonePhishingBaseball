@@ -160,7 +160,7 @@ def predict(pitcher, batter, model, df, target_col="PitchCall"):
 # Main Execution
 # =====================================
 if __name__ == "__main__":
-    data_path = "Derived_Data/filter/filtered_20250301_000033.parquet"
+    data_path = "../../../Derived_Data/filter/filtered_20250301_031659.parquet"
 
     # 1) Train using PyCaret (automatically compares multiple models)
     model, df, target_col = model_train(data_path=data_path)

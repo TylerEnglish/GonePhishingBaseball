@@ -109,6 +109,41 @@ Despite these fluctuations, the final selected model produced a validation `RMSE
 22                          USI                                               5b14
 
 
+
+Model  Accuracy  AUC  Recall   Prec.  \
+ridge                    Ridge Classifier    0.6383  0.0  0.6383  0.6369
+et                 Extra Trees Classifier    0.3804  0.0  0.3804  0.6497
+knn                K Neighbors Classifier    0.3697  0.0  0.3697  0.3510
+rf               Random Forest Classifier    0.3659  0.0  0.3659  0.5997
+lr                    Logistic Regression    0.3595  0.0  0.3595  0.1292
+dummy                    Dummy Classifier    0.3595  0.0  0.3595  0.1292
+lightgbm  Light Gradient Boosting Machine    0.2754  0.0  0.2754  0.4206
+nb                            Naive Bayes    0.2583  0.0  0.2583  0.1290
+svm                   SVM - Linear Kernel    0.1925  0.0  0.1925  0.1090
+dt               Decision Tree Classifier    0.1759  0.0  0.1759  0.1856
+xgboost         Extreme Gradient Boosting    0.1759  0.0  0.1759  0.1744
+qda       Quadratic Discriminant Analysis    0.1625  0.0  0.1625  0.3064
+ada                  Ada Boost Classifier    0.1560  0.0  0.1560  0.0264
+gbc          Gradient Boosting Classifier    0.0018  0.0  0.0018  0.0892
+lda          Linear Discriminant Analysis    0.0015  0.0  0.0015  0.0000
+
+              F1   Kappa     MCC  TT (Sec)
+ridge     0.5676  0.4854  0.5501     0.801
+et        0.3053  0.2537  0.3685     1.532
+knn       0.3226  0.1101  0.1225     2.596
+rf        0.3188  0.2488  0.3133     2.042
+lr        0.1901  0.0000  0.0000     9.409
+dummy     0.1901  0.0000  0.0000     0.749
+lightgbm  0.2581  0.1625  0.1880     2.571
+nb        0.1711 -0.0010 -0.0015     1.022
+svm       0.1239  0.0007  0.0009     2.810
+dt        0.1745  0.1490  0.3055     0.891
+xgboost   0.1744  0.1490  0.3055     2.380
+qda       0.1613  0.1263  0.2035     1.034
+ada       0.0451  0.0000  0.0000     4.052
+gbc       0.0006  0.0002  0.0063   125.729
+lda       0.0000  0.0000  0.0000     1.240
+
 ### Explanation
 Takes forever for mediorcer results.
 
@@ -116,5 +151,42 @@ Takes forever for mediorcer results.
 ## Pycarrot Reg
 
 ### Results
+
+
+                    Description             Value
+0                    Session id                42
+1                        Target         PitchofPA
+2                   Target type        Regression
+3           Original data shape       (16979, 70)
+4        Transformed data shape      (16979, 132)
+5   Transformed train set shape      (13583, 132)
+6    Transformed test set shape       (3396, 132)
+7              Numeric features                55
+8          Categorical features                14
+9      Rows with missing values            100.0%
+10                   Preprocess              True
+11              Imputation type            simple
+12           Numeric imputation              mean
+13       Categorical imputation              mode
+14     Maximum one-hot encoding                25
+15              Encoding method              None
+16               Fold Generator             KFold
+17                  Fold Number                10
+18                     CPU Jobs                -1
+19                      Use GPU             False
+20               Log Experiment             False
+21              Experiment Name  reg-default-name
+22                          USI              c154
+Traceback (most recent call last):
+  File "c:\School Files\Winter 2025\Hackathon\github\GonePhishingBaseball\Scripts\ML_Pipe\test_cases\pycarrot_reg.py", line 153, in <module>
+    trained_model, df_agg = model_train()
+                            ^^^^^^^^^^^^^
+  File "c:\School Files\Winter 2025\Hackathon\github\GonePhishingBaseball\Scripts\ML_Pipe\test_cases\pycarrot_reg.py", line 141, in model_train
+    best_model = compare_models(sort="RMSE")
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\death\anaconda3\envs\test311\Lib\site-packages\pycaret\utils\generic.py", line 963, in wrapper
+    raise ValueError(message)
+ValueError: _CURRENT_EXPERIMENT global variable is not set. Please run setup() first.
+
 
 ### Explanations
