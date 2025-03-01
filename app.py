@@ -92,7 +92,18 @@ with home:
 
 
 with ml:
-    print("hello")
+    # File uploader
+    st.title("Machine Learning")
+
+    uploaded_file = st.file_uploader("Upload a CSV or Excel file", type=["csv", "xlsx","parquet"])
+    if uploaded_file is not None:
+        # Check file type and load accordingly
+        if uploaded_file.name.endswith(".csv"):
+            df = pd.read_csv(uploaded_file)
+        elif uploaded_file.name.endswith(".xlsx"):
+            df = pd.read_excel(uploaded_file)
+        elif uploaded_file.name.endswith(".parquet"):
+            df = pd.read_parquet(uploaded_file)
 
 
 with outs:
@@ -117,13 +128,12 @@ with outs:
 
         # Create a bar chart
         fig = px.bar(pitch_counts, x="CleanPitchType", y="Count",
-                    title="Number of Each Pitch Type",
                     labels={"CleanPitchType": "Pitch Type", "Count": "Number of Throws"},
                     color="CleanPitchType",
                     color_discrete_sequence=colors)
         fig.update_layout(showlegend=False)
         # Show the plot
-        st.title(f"Runs by Pitch Type for {selected_pitcher_team}")
+        st.markdown(f"## **Count of Pitch Types for {selected_pitcher_team}**")
         st.plotly_chart(fig)
 
     
@@ -153,7 +163,6 @@ with outs:
 
         # Bar chart of percentage of throws resulting in strike
         fig = px.bar(pitch_strike_rates, x="CleanPitchType", y="StrikePercentage",
-                    title="Percentage of Throws Resulting in a Strike by Pitch Type",
                     labels={"CleanPitchType": "Pitch Type", "StrikePercentage": "Strike Percentage"},
                     color="CleanPitchType",
                     color_discrete_sequence=colors)
@@ -161,7 +170,7 @@ with outs:
         fig.update_layout(showlegend=False)
         fig.update_yaxes(tickformat=".0%")
         # Show the plot
-        st.title(f"Runs by Pitch Type for {selected_pitcher_team}")
+        st.markdown(f"## **Percentage of Throws Resulting in Strike for {selected_pitcher_team}**")
         st.plotly_chart(fig)
 
 with runs:
@@ -221,7 +230,6 @@ with runs:
             color="LastPitch",
             barmode="stack",
             color_discrete_sequence=colors,
-            title="Runs Scored by Pitch Type and Team",
             labels={"LastPitch": "Pitch Type", "count": "Runs Scored"},
         )
 
@@ -275,7 +283,6 @@ with runs:
             color="BatterResult",
             barmode='group',
             color_discrete_sequence=colors,
-            title="Runs Scored by Pitch Type and Team",
             labels={"CleanPitchType": "Pitch Type", "count": "Result of At Bat Count"},
         )
 
@@ -285,7 +292,7 @@ with runs:
         )
 
         # Show the plot in Streamlit
-        st.title(f"Runs by Pitch Type for {selected_pitcher_team}")
+        st.markdown(f"## **Outs VS. On Base for {selected_pitcher_team}**")
         st.plotly_chart(fig)  # Display Plotly chart in Streamlit
 
 with appendix:
