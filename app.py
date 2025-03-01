@@ -127,7 +127,10 @@ with ml:
         unique_batters = list(df["BatterId"].unique())
         st.markdown(unique_batters)
 
-        predictions = predict(unique_pitchers, unique_batters)
+        combinations = [(x, y) for x in unique_pitchers for y in unique_batters]
+
+        for comb in combinations:
+            predictions = predict(comb[0], comb[1])
 
 
 with outs:
@@ -283,10 +286,10 @@ with runs:
         )
 
         # bottom_pitches
-        outs = last_pitch_result[last_pitch_result["BatterResult"].isin(["Out", "Strikeout"])]
-        outs = outs.sort_values('count')
+        on_base = last_pitch_result[~last_pitch_result["BatterResult"].isin(["Out", "Strikeout"])]
+        on_base = on_base.sort_values('count')
 
-        pitch_types = outs['CleanPitchType'].unique()
+        pitch_types = on_base['CleanPitchType'].unique()
 
         col1, col2, col3 = st.columns(3)
         with st.container(border=True):
@@ -296,8 +299,8 @@ with runs:
         top_n_pitches = pitch_types[:top_pitches]
         last_pitch_result = last_pitch_result[last_pitch_result["CleanPitchType"].isin(top_n_pitches)]
         sorted_result = pd.concat([
-            last_pitch_result[last_pitch_result['BatterResult'].isin(["Out", "Strikeout"])].sort_values(by='count', ascending=False),
-            last_pitch_result[~last_pitch_result['BatterResult'].isin(["Out", "Strikeout"])]
+            last_pitch_result[~last_pitch_result['BatterResult'].isin(["Out", "Strikeout"])].sort_values(by='count', ascending=True),
+            last_pitch_result[last_pitch_result['BatterResult'].isin(["Out", "Strikeout"])]
         ])
         # Create a Plotly bar plot
         fig = px.bar(
@@ -355,7 +358,7 @@ with outs_by:
         data_clean["PlayResult"],
     )
 
-    data_clean["PitcherId"] = data_clean["PitcherId"].astype(dtype=str)
+    data_clean[mean_type] = data_clean[mean_type].astype(dtype=str)
 
     # Exploding 'PitchCall' column to have individual rows for each pitch call
     data_explode = data_clean.explode("PitchCall")
@@ -396,7 +399,8 @@ with outs_by:
     # Create the ridgeline (violin) plot using Plotly Express
     fig = px.box(
         data_frame=data_explode,
-        x="count", 
+        x="count",
+        # y="Caused Outs",
         color="Caused Outs",
         boxmode="group",
         points="all",  # Show all points
@@ -407,7 +411,7 @@ with outs_by:
 
     # Customize layout to improve the appearance
     fig.update_layout(
-        xaxis_title="Count of Strikes Per Game",
+        xaxis_title="",
         yaxis_title="Caused Outs",
         legend=dict(
             traceorder='reversed'  # This reverses the legend order
@@ -416,6 +420,13 @@ with outs_by:
             range=[-.5, .33]  # Set the y-axis limits
         )
     )
+
+    fig.update_xaxes(title_text="Count of Strikes Per Game", row=1, col=2)
+
+    fig.update_yaxes(title_text="Caused Outs", row=3, col=1)
+
+    if mean_type != "TeamName":
+        fig.update_yaxes(title_text="Caused Outs", row=2, col=1)
 
     fig.for_each_annotation(
             lambda a: a.update(text=a.text.split("=")[-1], font=dict(color="black"))
@@ -531,7 +542,10 @@ with appendix:
         st.markdown(data_dict_html, unsafe_allow_html=True)
 
     with test_cases:
-        print("hello")
+        with open("Scripts/ML_Pipe/test_cases/testcase_result.md", "r") as file:
+            md_content = file.read()
+
+        st.markdown(md_content, unsafe_allow_html=True)
 
     
     with validity_of_data:
