@@ -42,7 +42,7 @@ def clean_baseball_first(df):
     clean_df['Time'] = pd.to_datetime(clean_df['Time'], format='%H:%M:%S.%f')
     return clean_df
 
-if __name__ == "__main__":
+def clean_pipe():
     df = join()
     df.copy(deep=True)
     df = clean_baseball_first(df=df)
@@ -59,4 +59,5 @@ if __name__ == "__main__":
     
     print(f"Data saved to {output_file}")
 
-   
+if __name__ == "__main__":
+    clean_pipe()
