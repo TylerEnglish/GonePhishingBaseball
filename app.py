@@ -2,6 +2,9 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+from PIL import Image
 
 st.set_page_config(
     page_title="Pioneer League Metrics Group",
@@ -28,6 +31,20 @@ st.sidebar.header("Filters")
 
 data = pd.read_parquet("Derived_Data/filter/filtered_20250228_231053.parquet")
 
+data["year"] = pd.to_datetime(data["Date"]).dt.year
+data["year"] = data["year"].fillna(method="ffill")
+
+years = list(data["year"].unique()) + ["All Years"]
+
+selected_year = st.sidebar.selectbox(
+    "Select a Year",
+    options=years,
+    index=list(years).index("All Years"), 
+)
+
+if selected_year != "All Years":
+    data = data[data["year"] == selected_year]
+
 team_names = {
     'GRE_VOY': 'Great Falls Voyagers',
     'BIL_MUS': 'Billings Mustangs',
@@ -44,11 +61,11 @@ team_names = {
     'GRA_ROC': 'Grand Rapids Rockies'
 }
 
-data["full_name"] = data["PitcherTeam"].map(team_names)
+data["TeamName"] = data["PitcherTeam"].map(team_names)
 excluded_pitches = ["Knuckleball", "OneSeamFastBall", "Sweeper", "Other", "None"]
 data = data.loc[~data["CleanPitchType"].isin(excluded_pitches), ]
 
-pitcher_team = list(data["full_name"].unique()) + ["All Teams"]
+pitcher_team = list(data["TeamName"].unique()) + ["All Teams"]
 pitcher_team.sort()
 # Dropdown menu with default set to 'IDA_CHU'
 selected_pitcher_team = st.sidebar.selectbox(
@@ -58,12 +75,14 @@ selected_pitcher_team = st.sidebar.selectbox(
 )
 
 if selected_pitcher_team != "All Teams":
-    data = data[data["full_name"] == selected_pitcher_team]
-
-
-home, ml, outs, runs, appendix = st.tabs(
-    ["Home", "Machine Learning", "Out Analytics", "Run Analytics", "Appendix"]
-)
+    data = data[data["TeamName"] == selected_pitcher_team]
+    home, ml, outs, runs, outs_by, appendix = st.tabs(
+        ["Home", "Machine Learning", "Out Analytics", "Run Analytics", "Outs By Player", "Appendix"]
+    )
+else:
+    home, ml, outs, runs, outs_by, appendix = st.tabs(
+        ["Home", "Machine Learning", "Out Analytics", "Run Analytics", "Outs By Team", "Appendix"]
+    )
 
 with home:
     st.header("Pioneer Baseballs League Metrics Group Analysis")
@@ -175,7 +194,7 @@ with outs:
 
 with runs:
     data_clean = (
-        data.groupby(["PAofInning", "Inning", "Top/Bottom", "full_name"])
+        data.groupby(["PAofInning", "Inning", "Top/Bottom", "TeamName"])
         .agg(
             {
                 "KorBB": lambda x: list(x),
@@ -295,6 +314,112 @@ with runs:
         st.markdown(f"## **Outs VS. On Base for {selected_pitcher_team}**")
         st.plotly_chart(fig)  # Display Plotly chart in Streamlit
 
+
+
+with outs_by:
+    # Select the appropriate 'mean_type' based on the selected pitcher team
+    mean_type = ""
+    if selected_pitcher_team == "All Teams":
+        mean_type = "TeamName"
+    else:
+        mean_type = "PitcherId"
+
+    st.markdown(f"### **Distributions of Strikes for {selected_pitcher_team} by {mean_type}**")
+
+    # Aggregate data to get relevant columns
+    data_clean = (
+        data.groupby([mean_type, "GameID"])
+        .agg(
+            {
+                "KorBB": lambda x: list(x),
+                "PlayResult": lambda x: list(x),
+                "PitchCall": lambda x: list(x)
+            }
+        )
+        .reset_index()
+    )
+
+    # Extract last values from lists in the columns
+    data_clean["KorBB"] = data_clean["KorBB"].str.get(-1)
+    data_clean["PlayResult"] = data_clean["PlayResult"].str.get(-1)
+
+    # Determine BatterResult based on KorBB and PlayResult
+    data_clean["BatterResult"] = np.where(
+        data_clean["KorBB"].isin(["Strikeout", "Walk"]),
+        data_clean["KorBB"],
+        data_clean["PlayResult"],
+    )
+
+    data_clean["PitcherId"] = data_clean["PitcherId"].astype(dtype=str)
+
+    # Exploding 'PitchCall' column to have individual rows for each pitch call
+    data_explode = data_clean.explode("PitchCall")
+    data_explode = data_explode[data_explode["PitchCall"].isin(["StrikeCalled", "StrikeSwinging"])]
+
+    # Create exploded DataFrame for the "Out" or "Strikeout" categories
+    data_explode2 = (
+        data_explode[
+            (data_explode["PitchCall"].isin(["StrikeCalled", "StrikeSwinging"]))
+            & (data_explode["BatterResult"].isin(["Out", "Strikeout"]))
+        ]
+        .groupby([mean_type, "GameID"])
+        .agg(count=("PitchCall", "count"))
+        .reset_index()
+    )
+    data_explode2["Caused Outs"] = "True"
+
+    # Data cleaning for the second part (non-out) pitches
+    data_explode = data_explode.groupby([mean_type, "GameID"]).agg(count=("PitchCall", "count")).reset_index()
+    data_explode["Caused Outs"] = "False"
+    data_explode = pd.concat([data_explode, data_explode2])
+
+    # Prepare data for plotting, adding a mean count per group
+    dat_mean_type = data_explode.groupby([mean_type]).size().reset_index()
+    dat_mean_type.columns = [mean_type, "count"]
+    dat_mean_type = dat_mean_type.sort_values("count", ascending=False)
+
+    # Select categories for plotting
+    if mean_type == "TeamName":
+        dat_mean_names = list(dat_mean_type[mean_type].unique())[:-1]
+    else:
+        dat_mean_names = list(dat_mean_type[mean_type].unique())[:5]
+
+    # Filter data to include only selected mean names
+    data_explode = data_explode[data_explode[mean_type].isin(dat_mean_names)]
+    data_explode = data_explode.sort_values("count", ascending=False)
+
+    # Create the ridgeline (violin) plot using Plotly Express
+    fig = px.box(
+        data_frame=data_explode,
+        x="count", 
+        color="Caused Outs",
+        boxmode="group",
+        points="all",  # Show all points
+        facet_col=mean_type,  # Facet by the mean_type (e.g., pitcher or team)
+        facet_col_wrap=3,
+        color_discrete_sequence=colors
+    )
+
+    # Customize layout to improve the appearance
+    fig.update_layout(
+        xaxis_title="Count of Strikes Per Game",
+        yaxis_title="Caused Outs",
+        legend=dict(
+            traceorder='reversed'  # This reverses the legend order
+        ),
+        yaxis=dict(
+            range=[-.5, .33]  # Set the y-axis limits
+        )
+    )
+
+    fig.for_each_annotation(
+            lambda a: a.update(text=a.text.split("=")[-1], font=dict(color="black"))
+        )
+
+    # Display the plot in Streamlit
+    st.plotly_chart(fig)
+
+
 with appendix:
     st.title("Appendix")
 
@@ -392,7 +517,7 @@ with appendix:
     data_dict_html += "</tbody></table>"
 
     # Streamlit App
-    st.markdown("## MLB Statcast Data Dictionary")
+    st.markdown("## Pioneer Baseball Data Dictionary")
     st.write("This table describes all key columns in the dataset:")
 
     # Display the table using Markdown
