@@ -1,6 +1,7 @@
 import pandas as pd
 import os
 from datetime import datetime
+import regex as re
 
 def join(base_path="Raw_Data/GameData"):
     all_csv_files = []
@@ -46,6 +47,18 @@ def clean_baseball(df):
   # clean and replace undefined for HitType
   clean_df['TaggedHitType'] = clean_df['TaggedHitType'].replace(r'(?i)^undefined', pd.NA, regex=True)
   clean_df['CleanHitType'] = clean_df['TaggedHitType'].fillna(clean_df['AutoHitType'])
+
+  df["CleanPitchCall"] = df["PitchCall"].apply(lambda x: 
+      "Strike" if "strike" in str(x).lower() else 
+      "Ball" if "ball" in str(x).lower() else 
+      "Hit" if "inplay" in str(x).lower() else 
+      "Walk" if "hitbypitch" in str(x).lower() else                                       
+      "Foul" if "foul" in str(x).lower() else x
+  )
+  df["CleanPitchType"] = df["CleanPitchType"].apply(lambda x:  
+     "ChangeUp" if re.search(r'(?i)^changeup$', str(x)) else  # Case insensitive match for Changeup
+    "TwoSeamFastBall" if re.search(r'(?i)(twoseamfastball|oneseamfastball)', str(x)) else x 
+  )
 
 
   return clean_df

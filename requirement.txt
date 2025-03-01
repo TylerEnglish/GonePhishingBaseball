@@ -5,4 +5,4 @@ pytorch-tabnet
 numpy
 torch
 scikit-learn
-import 
+regex
