@@ -103,15 +103,16 @@ with outs:
     pitch_counts = pitch_counts.sort_values('Count', ascending=False)
 
     pitch_types = pitch_counts['CleanPitchType'].unique()
-    col1, col2, col3 = st.columns(3)
-    with st.container(border=True):
-        with col3:
-            top_pitches = st.number_input("Top N Pitch Counts", min_value=3, max_value = len(pitch_types), value=5, step=1, format="%d")
-
-    top_n_pitches = pitch_types[:top_pitches]
-    pitch_counts = pitch_counts[pitch_counts["CleanPitchType"].isin(top_n_pitches)]
 
     with st.container(border=True):
+        col1, col2, col3 = st.columns(3)
+        with st.container(border=True):
+            with col3:
+                top_pitches = st.number_input("Top N Pitch Counts", min_value=3, max_value = len(pitch_types), value=5, step=1, format="%d")
+
+        top_n_pitches = pitch_types[:top_pitches]
+        pitch_counts = pitch_counts[pitch_counts["CleanPitchType"].isin(top_n_pitches)]
+
         # Create a bar chart
         fig = px.bar(pitch_counts, x="CleanPitchType", y="Count",
                     title="Number of Each Pitch Type",
@@ -123,6 +124,43 @@ with outs:
         st.title(f"Runs by Pitch Type for {selected_pitcher_team}")
         st.plotly_chart(fig)
 
+    
+    with st.container(border=True):
+        total_pitches = data["CleanPitchType"].value_counts().reset_index()
+        total_pitches.columns = ["CleanPitchType", "TotalPitches"]
+        # Count pitches that resulted in a strike (called or swinging)
+        strike_pitches = data[data["PitchCall"].isin(["StrikeCalled", "StrikeSwinging"])]
+        strike_counts = strike_pitches["CleanPitchType"].value_counts().reset_index()
+        strike_counts.columns = ["CleanPitchType", "StrikePitches"]
+        # Merge both counts
+        pitch_strike_rates = total_pitches.merge(strike_counts, on="CleanPitchType", how="left").fillna(0)
+        # Calculate the percentage of throws that resulted in a strike
+        pitch_strike_rates["StrikePercentage"] = (pitch_strike_rates["StrikePitches"] / pitch_strike_rates["TotalPitches"])
+
+
+        pitch_strike_rates = pitch_strike_rates.sort_values('StrikePercentage', ascending=False)
+
+        pitch_types = pitch_strike_rates['CleanPitchType'].unique()
+        col1, col2, col3 = st.columns(3)
+        with st.container(border=True):
+            with col3:
+                top_pitches = st.number_input("Top N Pitches Strikes", min_value=3, max_value = len(pitch_types), value=5, step=1, format="%d")
+
+        top_n_pitches = pitch_types[:top_pitches]
+        pitch_strike_rates = pitch_strike_rates[pitch_strike_rates["CleanPitchType"].isin(top_n_pitches)]
+
+        # Bar chart of percentage of throws resulting in strike
+        fig = px.bar(pitch_strike_rates, x="CleanPitchType", y="StrikePercentage",
+                    title="Percentage of Throws Resulting in a Strike by Pitch Type",
+                    labels={"CleanPitchType": "Pitch Type", "StrikePercentage": "Strike Percentage"},
+                    color="CleanPitchType",
+                    color_discrete_sequence=colors)
+        # Remove legend
+        fig.update_layout(showlegend=False)
+        fig.update_yaxes(tickformat=".0%")
+        # Show the plot
+        st.title(f"Runs by Pitch Type for {selected_pitcher_team}")
+        st.plotly_chart(fig)
 
 with runs:
     data_clean = (
@@ -240,9 +278,6 @@ with runs:
         fig.for_each_annotation(
             lambda a: a.update(text=a.text.split("=")[-1], font=dict(color="black"))
         )
-
-        # Remove the legend
-        fig.update_layout(showlegend=False)
 
         # Show the plot in Streamlit
         st.title(f"Runs by Pitch Type for {selected_pitcher_team}")
