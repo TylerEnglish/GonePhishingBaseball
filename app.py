@@ -9,6 +9,20 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+colors = [
+            "#5F7082",  # Muted denim blue
+            "#4C8C65",  # Muted grass green
+            "#B4976B",  # Soft tan (field dirt)
+            "#7A5D42",  # Earthy brown (infield)
+            "#5A7D8B",  # Muted stadium blue
+            "#A35742",  # Duller red (team color)
+            "#704B38",  # Leather brown (glove or ball)
+            "#6B7C4B",  # Olive green (dugouts)
+            "#D1B692",  # Light sandy beige (base dirt)
+            "#8E7F5C",  # Muted golden brown (worn equipment)
+            "#9C5D4F"   # Muted brick red (stadium walls)
+        ]
+
 # Sidebar Navigation
 st.sidebar.header("Filters")
 
@@ -31,7 +45,7 @@ team_names = {
 }
 
 data["full_name"] = data["PitcherTeam"].map(team_names)
-excluded_pitches = ["Knuckleball", "OneSeamFastBall", "Sweeper", "Other"]
+excluded_pitches = ["Knuckleball", "OneSeamFastBall", "Sweeper", "Other", "None"]
 data = data.loc[~data["CleanPitchType"].isin(excluded_pitches), ]
 
 pitcher_team = data["full_name"].unique()
@@ -80,10 +94,34 @@ with ml:
 
 
 with outs:
-    ## Filters for sidebar on teams, so only look at one teams pitchers at a time
-    ## Also generalized model with bars for entire data
+    st.title("Out Analytics")
+    
+    # Count the number of occurrences of each pitch type
+    pitch_counts = data["CleanPitchType"].value_counts().reset_index()
+    pitch_counts.columns = ["CleanPitchType", "Count"]
 
-    print("hello")
+    pitch_counts = pitch_counts.sort_values('Count', ascending=False)
+
+    pitch_types = pitch_counts['CleanPitchType'].unique()
+    col1, col2, col3 = st.columns(3)
+    with st.container(border=True):
+        with col3:
+            top_pitches = st.number_input("Top N Pitch Counts", min_value=3, max_value = len(pitch_types), value=5, step=1, format="%d")
+
+    top_n_pitches = pitch_types[:top_pitches]
+    pitch_counts = pitch_counts[pitch_counts["CleanPitchType"].isin(top_n_pitches)]
+
+    with st.container(border=True):
+        # Create a bar chart
+        fig = px.bar(pitch_counts, x="CleanPitchType", y="Count",
+                    title="Number of Each Pitch Type",
+                    labels={"CleanPitchType": "Pitch Type", "Count": "Number of Throws"},
+                    color="CleanPitchType",
+                    color_discrete_sequence=colors)
+        fig.update_layout(showlegend=False)
+        # Show the plot
+        st.title(f"Runs by Pitch Type for {selected_pitcher_team}")
+        st.plotly_chart(fig)
 
 
 with runs:
@@ -117,7 +155,7 @@ with runs:
     data_explode = data_clean.explode(["CleanPitchType", "PitchofPA"])
 
     st.title("Run Analytics")
-    
+
     with st.container(border=True):
         runs_per_pitch = (
             data_explode.groupby(["CleanPitchType", "full_name"])
@@ -125,15 +163,18 @@ with runs:
             .reset_index()
         )
 
-        colors = [
-            "#B0B3BA",  # Light Cool Gray
-            "#77B6B2",  # Brighter Teal
-            "#E3CDA8",  # Warm Sand
-            "#B5C99A",  # Olive Mist
-            "#92B6D5",  # Dusty Blue
-            "#D8A8A8",  # Rosy Blush
-            "#C4A99D",  # Soft Mocha
-        ]
+        runs_per_pitch = runs_per_pitch.sort_values('RunsScored')
+
+        pitch_types = runs_per_pitch['CleanPitchType'].unique()
+        col1, col2, col3 = st.columns(3)
+        with st.container(border=True):
+            with col3:
+                top_pitches = st.number_input("Bottom N Pitches for Runs Scored", min_value=3, max_value=len(pitch_types), value=5, step=1, format="%d")
+
+        top_n_pitches = pitch_types[:top_pitches]
+        runs_per_pitch = runs_per_pitch[pitch_counts["CleanPitchType"].isin(top_n_pitches)]
+
+
         runs_per_pitch = runs_per_pitch.sort_values('RunsScored')
         # Create a Plotly bar plot
         fig = px.bar(
@@ -161,21 +202,26 @@ with runs:
     
     with st.container(border=True):
         # Last pitch with Play Result
+        two_results = data_clean
+        two_results["BatterResult"] = np.where(two_results["BatterResult"].isin(["Out", "Strikeout"]), "Out", "Non-Out")
+
         last_pitch_result = (
-            data_clean.groupby(["LastPitch", "BatterResult"])
+            two_results.groupby(["LastPitch", "BatterResult"])
             .agg(count = ("RunsScored", "count"))
             .reset_index()
         )
+        
+        last_pitch_result = last_pitch_result.sort_values('count')
 
-        colors = [
-            "#B0B3BA",  # Light Cool Gray
-            "#77B6B2",  # Brighter Teal
-            "#E3CDA8",  # Warm Sand
-            "#B5C99A",  # Olive Mist
-            "#92B6D5",  # Dusty Blue
-            "#D8A8A8",  # Rosy Blush
-            "#C4A99D",  # Soft Mocha
-        ]
+        pitch_types = last_pitch_result['LastPitch'].unique()
+
+        col1, col2, col3 = st.columns(3)
+        with st.container(border=True):
+            with col3:
+                top_pitches = st.number_input("Top N Pitches for Outs", min_value=3, max_value=len(pitch_types), value=5, step=1, format="%d")
+
+        top_n_pitches = pitch_types[:top_pitches]
+        last_pitch_result = last_pitch_result[pitch_counts["CleanPitchType"].isin(top_n_pitches)]
 
         # Create a Plotly bar plot
         fig = px.scatter(

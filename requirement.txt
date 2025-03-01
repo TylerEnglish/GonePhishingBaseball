@@ -5,4 +5,5 @@ pytorch-tabnet
 numpy
 torch
 scikit-learn
-import 
+numpy
+plotly
