@@ -40,9 +40,13 @@ def clean_baseball(df):
   clean_df['Date'] = pd.to_datetime(clean_df['Date'])
   # turn "Time" into a date type instead of object
   clean_df['Time'] = pd.to_datetime(clean_df['Time'], format='%H:%M:%S.%f')
-  # set 'undefined' in TaggedPitchType to NA then fill it with the value from AutoPitchType
-  clean_df['TaggedPitchType'] = clean_df['TaggedPitchType'].replace('undefined', pd.NA)
-  clean_df['CleanPitchType'] = clean_df['TaggedPitchType'].fillna(clean_df['AutoPitchType'], inplace=True)
+  # clean and replace undefined for PitchType
+  clean_df['TaggedPitchType'] = clean_df['TaggedPitchType'].replace(r'(?i)^undefined', pd.NA, regex=True)
+  clean_df['CleanPitchType'] = clean_df['TaggedPitchType'].fillna(clean_df['AutoPitchType'])
+  # clean and replace undefined for HitType
+  clean_df['TaggedHitType'] = clean_df['TaggedHitType'].replace(r'(?i)^undefined', pd.NA, regex=True)
+  clean_df['CleanHitType'] = clean_df['TaggedHitType'].fillna(clean_df['AutoHitType'])
+
 
   return clean_df
 
