@@ -74,6 +74,7 @@ def features(df):
         ,'MeasuredDuration'
         ,'SpeedDrop'
         ,'AutoHitType'
+        ,'PitcherTeam'
         #,'PitchTrajectoryXc0'
         # ,'PitchTrajectoryXc1'
         # ,'PitchTrajectoryXc2'
