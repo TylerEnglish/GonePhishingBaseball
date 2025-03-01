@@ -31,21 +31,25 @@ def join(base_path="Raw_Data/GameData"):
     combined_df = pd.concat(dataframes, ignore_index=True)
     return combined_df
 
-def clean_baseball_first(df):
-    # remove names
-    clean_df = df.drop(columns=['Batter', 'Pitcher'])
-    # replace '' values with NULL
-    clean_df = clean_df.replace('', pd.NA)
-    # turn "Date" into a date type instead of object
-    clean_df['Date'] = pd.to_datetime(clean_df['Date'])
-    # turn "Time" into a date type instead of object
-    clean_df['Time'] = pd.to_datetime(clean_df['Time'], format='%H:%M:%S.%f')
-    return clean_df
+def clean_baseball(df):
+  # remove names and TaggedPitchType
+  clean_df = df.drop(columns=['Batter', 'Pitcher', 'Catcher'])
+  # replace '' values with NULL
+  clean_df = clean_df.replace('', pd.NA)
+  # turn "Date" into a date type instead of object
+  clean_df['Date'] = pd.to_datetime(clean_df['Date'])
+  # turn "Time" into a date type instead of object
+  clean_df['Time'] = pd.to_datetime(clean_df['Time'], format='%H:%M:%S.%f')
+  # set 'undefined' in TaggedPitchType to NA then fill it with the value from AutoPitchType
+  clean_df['TaggedPitchType'] = clean_df['TaggedPitchType'].replace('undefined', pd.NA)
+  clean_df['CleanPitchType'] = clean_df['TaggedPitchType'].fillna(clean_df['AutoPitchType'], inplace=True)
+
+  return clean_df
 
 def clean_pipe():
     df = join()
     df.copy(deep=True)
-    df = clean_baseball_first(df=df)
+    df = clean_baseball(df=df)
     df.copy(deep=True)
     output_dir = "derived_data/clean"
     os.makedirs(output_dir, exist_ok=True)
