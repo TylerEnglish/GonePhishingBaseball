@@ -98,7 +98,7 @@ def train():
     reg_model, reg_scaler, df_reg, feature_cols_reg = train_reg()
     
     print("Training classification model...")
-    data_path = "Derived_Data/filter/filtered_20250301_000033.parquet"
+    data_path = "Derived_Data/feature/feature_20250301_055043.parquet"
     cls_model, cls_scaler, encoders, feature_cols_cls, target_col, df_cls = train_cls(data_path)
     
     models = {
@@ -262,7 +262,7 @@ def training_pipe():
 
 if __name__ == "__main__":
     # Example 1: Run the full pipeline (train + save + predict)
-    # training_pipe()
+    training_pipe()
 
     # Example 2: If models & extras are already saved, just do predictions
     # (comment out the training_pipe if you only want to do inference)

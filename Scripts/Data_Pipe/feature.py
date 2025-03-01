@@ -5,7 +5,7 @@ from datetime import datetime
 from scipy.stats import entropy  # Entropy helps measure unpredictability in pitch selection
 
 def compute_basic_features(df):
-    basic_features = df.groupby(["Date", "PitchNo", "PitcherId", "BatterId"]).agg(
+    basic_features = df.groupby(["Date", "PitchofPA", "PitcherId", "BatterId"]).agg(
         Avg_Pitch_Speed=("RelSpeed", "mean"),
         Avg_Vertical_Release_Angle=("VertRelAngle", "mean"),
         Avg_Horizontal_Release_Angle=("HorzRelAngle", "mean"),
@@ -19,7 +19,7 @@ def compute_basic_features(df):
     ).reset_index()
 
     # merge the basic_features back with original df modified by the same groupby
-    basic_features = df.merge(basic_features, on=["Date", "PitchNo", "PitcherId", "BatterId"])
+    basic_features = df.merge(basic_features, on=["Date", "PitchofPA", "PitcherId", "BatterId"])
 
     return basic_features
 
@@ -31,21 +31,35 @@ def compute_advanced_features(df):
         pitch_counts = pitches.value_counts(normalize=True)
         return entropy(pitch_counts)
 
-    advanced_features = df.groupby(["Date", "PitchNo", "PitcherId", "BatterId"]).agg(
-        Pitch_Type_Diversity=("TaggedPitchType", lambda x: x.nunique()),
+    advanced_features = df.groupby(["Date", "PitchofPA", "PitcherId", "BatterId"]).agg(
+        Pitch_Type_Diversity=("CleanPitchType", lambda x: x.nunique()),
         Max_Effective_Velocity=("EffectiveVelo", "max"),
         Avg_Velocity_Drop=("SpeedDrop", "mean"),
-        Breaking_Ball_Ratio=("TaggedPitchType", lambda x: (x.str.contains("Curve|Slider")).sum() / len(x)),
-        Pitch_Sequencing_Entropy=("TaggedPitchType", pitch_entropy),
-        Pitch_Zonal_Targeting=("PlateLocHeight", lambda x: (x < x.median()).sum() / len(x)),
-        Fastball_to_Offspeed_Ratio=("TaggedPitchType", lambda x: (x.str.contains("Fastball")).sum() / ((~x.str.contains("Fastball")).sum() + 1)),  # Avoid div by 0
-        Vertical_vs_Horizontal_Break_Ratio=("InducedVertBreak", lambda x: x.mean() / (df.loc[x.index, "HorzBreak"].mean() + 1e-6)),  # Avoid div by 0
+        Breaking_Ball_Ratio=(
+            "CleanPitchType",
+            lambda x: (x.str.contains("Curve|Slider", na=False)).sum() / len(x)
+        ),
+        Pitch_Sequencing_Entropy=("CleanPitchType", pitch_entropy),
+        Pitch_Zonal_Targeting=(
+            "PlateLocHeight",
+            lambda x: (x < x.median()).sum() / len(x)
+        ),
+        Fastball_to_Offspeed_Ratio=(
+            "CleanPitchType",
+            # Use na=False so ~ operator works correctly
+            lambda x: (x.str.contains("Fastball", na=False)).sum() 
+                    / ((~x.str.contains("Fastball", na=False)).sum() + 1)
+        ),
+        Vertical_vs_Horizontal_Break_Ratio=(
+            "InducedVertBreak",
+            lambda x: x.mean() / (df.loc[x.index, "HorzBreak"].mean() + 1e-6)
+        ),
         Release_Extension_Deviation=("Extension", "std"),
         Avg_Hit_Exit_Velocity=("ExitSpeed", "mean")
     ).reset_index()
 
     # merge the advance_features back with original df modified by the same groupby
-    advanced_features_df = df.merge(advanced_features, on=["Date", "PitchNo", "PitcherId", "BatterId"])
+    advanced_features_df = df.merge(advanced_features, on=["Date", "PitchofPA", "PitcherId", "BatterId"])
 
     return advanced_features_df
 
@@ -76,7 +90,7 @@ def compute_more_advanced_features(df):
     # ----------------------------
     # Compute pitch-level features
     # ----------------------------
-    pitch_level_features = df.groupby(["Date", "PitchNo", "PitcherId", "BatterId"]).agg(
+    pitch_level_features = df.groupby(["Date", "PitchofPA", "PitcherId", "BatterId"]).agg(
         Pitch_Type_Variance=("CleanPitchType", pitch_variance),
         Speed_Consistency=("RelSpeed", speed_consistency),
         Breaking_vs_Fastball_Ratio=("CleanPitchType", breaking_vs_fastball_ratio),
@@ -108,7 +122,7 @@ def compute_more_advanced_features(df):
     # ----------------------------------------
     combined_features = pitch_level_features.merge(matchup_features, on=["PitcherId", "BatterId"], how="left")
     combined_features = combined_features.merge(batter_features, on="BatterId", how="left")
-    final_df = df.merge(combined_features, on=["Date", "PitchNo", "PitcherId", "BatterId"], how="left")
+    final_df = df.merge(combined_features, on=["Date", "PitchofPA", "PitcherId", "BatterId"], how="left")
 
     return final_df
 

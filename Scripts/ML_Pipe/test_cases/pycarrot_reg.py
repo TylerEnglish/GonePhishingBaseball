@@ -2,7 +2,9 @@ import os
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
-from pycaret.regression import RegressionExperiment, compare_models, finalize_model, predict_model
+
+# PyCaret Regression Imports
+from pycaret.regression import RegressionExperiment, predict_model
 
 # ==================================
 # Scripting Functions
@@ -65,7 +67,7 @@ def prepare_data(df: pd.DataFrame) -> pd.DataFrame:
 # ================================================
 def predict(pitcher: float,
             batter: float,
-            model,  # Will be the finalized PyCaret model pipeline
+            model,  # PyCaret model pipeline returned from finalize_model(...)
             df: pd.DataFrame) -> int:
     """
     Predict PitchofPA for a given PitcherId and BatterId using the finalized PyCaret model.
@@ -84,17 +86,13 @@ def predict(pitcher: float,
         print(f"No aggregated data found for Pitcher {pitcher} vs Batter {batter}.")
         return None
     
-    # We only need the feature columns; PyCaret’s predict_model uses a full DataFrame
-    # The safest approach is to keep 'PitchofPA' but it won't affect the new predictions.
-    # We'll rename or drop the original target column to avoid confusion in predictions.
-    
+    # Create a copy for prediction
     predict_df = row.copy()
     
-    # Using predict_model from PyCaret automatically applies the pipeline:
+    # predict_model applies the trained pipeline to produce predictions.
     predictions = predict_model(estimator=model, data=predict_df)
     
-    # The default output of predict_model includes a 'Label' column with predictions
-    # We'll extract that and apply ceil for consistency with your original approach.
+    # The default output of predict_model has a 'Label' column with predictions
     pred_val = np.ceil(predictions["Label"].values[0]).astype(int)
     print(f"Predicted PitchofPA for Pitcher {pitcher} vs Batter {batter}: {pred_val}")
     return pred_val
@@ -114,7 +112,7 @@ def model_train():
         - finalized_model: The finalized PyCaret regression pipeline.
         - df_agg: The aggregated and preprocessed DataFrame.
     """
-    data_path = "../../../Derived_Data/filter/filtered_20250301_000033.parquet"  
+    data_path = "Derived_Data/filter/filtered_20250301_000033.parquet"  
     if not os.path.exists(data_path):
         print(f"Data file not found at: {data_path}")
         return None, None
@@ -124,25 +122,24 @@ def model_train():
     
     df_agg = prepare_data(df)
 
-    # Initialize a PyCaret regression experiment
+    # Create an instance of PyCaret's RegressionExperiment
     exp = RegressionExperiment()
 
-    # Set up the experiment
-    # (Adjust parameters like train_size, numeric_imputation, fold, etc. as needed)
+    # Set up the experiment using the instance-based API
     exp.setup(
         data=df_agg,
         target="PitchofPA",
         session_id=42,       # for reproducibility
         train_size=0.8,      # 80/20 split
+        silent=True,         # no interactive prompt
         log_experiment=False # disable experiment logging unless needed
     )
     
-    # Compare all models and return the best one based on default RMSE metric
-    best_model = compare_models(sort="RMSE")
+    # Compare models within the experiment (exp) and select the best based on RMSE
+    best_model = exp.compare_models(sort="RMSE")
     
-    # Finalize the best model on the entire dataset
-    # This returns a pipeline that includes all preprocessing + the best regressor
-    finalized_model = finalize_model(best_model)
+    # Finalize the best model (train on the entire dataset in that session)
+    finalized_model = exp.finalize_model(best_model)
 
     return finalized_model, df_agg
 
@@ -156,4 +153,4 @@ if __name__ == "__main__":
     if trained_model is not None and df_agg is not None:
         pitcher_id = 1000066910.0
         batter_id = 1000032366.0
-        prediction = predict(pitcher_id, batter_id, trained_model, df_agg)
+        _ = predict(pitcher_id, batter_id, trained_model, df_agg)
