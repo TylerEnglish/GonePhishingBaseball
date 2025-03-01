@@ -123,14 +123,21 @@ with ml:
             df = pd.read_parquet(uploaded_file)
 
         unique_pitchers = list(df["PitcherId"].unique())
-        st.markdown(unique_pitchers)
         unique_batters = list(df["BatterId"].unique())
-        st.markdown(unique_batters)
 
-        combinations = [(x, y) for x in unique_pitchers for y in unique_batters]
+        pitcher_id = [1000066910.0,1000060505.0,701628.0,815136.0,1000056876.0]
+        batter_id = [1000032366.0, 1000274194.0,1000035496.0,1000056633.0,683106.0]
 
-        for comb in combinations:
-            predictions = predict(comb[0], comb[1])
+        predictions = predict(pitcher_id[0], batter_id[0])
+        
+        cls_pred = f"Derived_Data/model_pred/cls_prediction_report_{int(pitcher_id[0])}_{int(batter_id[0])}.csv"
+        reg_pred = f"Derived_Data/model_pred/reg_prediction_report_{int(pitcher_id[0])}_{int(batter_id[0])}.csv"
+
+        reg = pd.read_csv(reg_pred)
+        cls = pd.read_csv(cls_pred)
+
+        st.table(reg)
+        st.table(cls)
 
 
 with outs:
@@ -374,11 +381,11 @@ with outs_by:
         .agg(count=("PitchCall", "count"))
         .reset_index()
     )
-    data_explode2["Caused Outs"] = "True"
+    data_explode2["Only Caused Outs"] = "True"
 
     # Data cleaning for the second part (non-out) pitches
     data_explode = data_explode.groupby([mean_type, "GameID"]).agg(count=("PitchCall", "count")).reset_index()
-    data_explode["Caused Outs"] = "False"
+    data_explode["Only Caused Outs"] = "False"
     data_explode = pd.concat([data_explode, data_explode2])
 
     # Prepare data for plotting, adding a mean count per group
@@ -400,8 +407,8 @@ with outs_by:
     fig = px.box(
         data_frame=data_explode,
         x="count",
-        # y="Caused Outs",
-        color="Caused Outs",
+        # y="Only Caused Outs",
+        color="Only Caused Outs",
         boxmode="group",
         points="all",  # Show all points
         facet_col=mean_type,  # Facet by the mean_type (e.g., pitcher or team)
@@ -412,7 +419,7 @@ with outs_by:
     # Customize layout to improve the appearance
     fig.update_layout(
         xaxis_title="",
-        yaxis_title="Caused Outs",
+        yaxis_title="Only Caused Outs",
         legend=dict(
             traceorder='reversed'  # This reverses the legend order
         ),
@@ -423,10 +430,10 @@ with outs_by:
 
     fig.update_xaxes(title_text="Count of Strikes Per Game", row=1, col=2)
 
-    fig.update_yaxes(title_text="Caused Outs", row=3, col=1)
+    fig.update_yaxes(title_text="Only Caused Outs", row=3, col=1)
 
     if mean_type != "TeamName":
-        fig.update_yaxes(title_text="Caused Outs", row=2, col=1)
+        fig.update_yaxes(title_text="Only Caused Outs", row=2, col=1)
 
     fig.for_each_annotation(
             lambda a: a.update(text=a.text.split("=")[-1], font=dict(color="black"))
@@ -441,7 +448,7 @@ with appendix:
 
     data_dictionary, test_cases, validity_of_data = st.tabs(["Data Dictionary", "Test Cases", "Validity of Data"])
     with data_dictionary:
-        # Convert data dictionary into an HTML table with bold column names
+        # Start HTML table
         data_dict_html = """
         <table>
             <thead>
@@ -453,7 +460,7 @@ with appendix:
             <tbody>
         """
 
-        # Add each column and description with bold column names
+        # List of column names and descriptions
         data_dict = [
             ("Date", "Game date (YYYY-MM-DD)."),
             ("Time", "Time of the pitch (HH:MM:SS)."),
@@ -471,7 +478,7 @@ with appendix:
             ("Strikes", "Count of strikes before the pitch."),
             ("PitchCall", "Outcome of the pitch (Ball, Strike, etc.)."),
             ("KorBB", "Strikeout (K) or walk (BB)."),
-            ("CleanPitchType", "Categorized pitch type (e.g., Fastball, Slider) and combines TaggedPitchType and AutoPitchType."),
+            ("CleanPitchType", "Categorized pitch type (e.g., Fastball, Slider)."),
             ("TaggedHitType", "Manually reviewed hit type (e.g., Line Drive, Fly Ball)."),
             ("PlayResult", "Result of the play (Single, Out, etc.)."),
             ("OutsOnPlay", "Number of outs recorded on the play."),
@@ -523,15 +530,35 @@ with appendix:
             ("MeasuredDuration", "Duration from pitch release to plate (seconds)."),
             ("SpeedDrop", "Speed reduction from release to plate (MPH)."),
             ("AutoHitType", "System-classified hit type (e.g., Ground Ball, Fly Ball)."),
+            ("PitcherTeam", "Team the pitcher is playing for."),
             ("HitSpinAxis", "Spin axis of ball after contact (degrees)."),
+            ("Avg_Pitch_Speed", "Average pitch speed for the pitcher."),
+            ("Avg_Vertical_Release_Angle", "Average vertical release angle for the pitcher."),
+            ("Avg_Horizontal_Release_Angle", "Average horizontal release angle for the pitcher."),
+            ("Avg_Spin_Rate", "Average spin rate for the pitcher."),
+            ("Avg_Spin_Axis", "Average spin axis for the pitcher."),
+            ("Strike_Percentage", "Percentage of pitches that were strikes."),
+            ("Ball_Percentage", "Percentage of pitches that were balls."),
+            ("Outs_Created", "Total outs created by the pitcher."),
+            ("Avg_PlateLocHeight", "Average pitch height at the plate."),
+            ("Avg_PlateLocSide", "Average pitch lateral location at the plate."),
+            ("Pitch_Type_Diversity", "Measure of how many different pitch types a pitcher uses."),
+            ("Max_Effective_Velocity", "Maximum effective velocity recorded."),
+            ("Avg_Velocity_Drop", "Average drop in velocity from release to home plate."),
+            ("Breaking_Ball_Ratio", "Ratio of breaking balls thrown compared to other pitches."),
+            ("Pitch_Sequencing_Entropy", "Entropy measure of pitch sequencing strategy."),
+            ("Pitch_Zonal_Targeting", "Strategy-based measure of pitch placement in the zone."),
+            ("Fastball_to_Offspeed_Ratio", "Ratio of fastballs to offspeed pitches thrown."),
+            ("Vertical_vs_Horizontal_Break_Ratio", "Ratio comparing vertical to horizontal pitch break."),
+            ("Release_Extension_Deviation", "Deviation in release extension consistency."),
+            ("Avg_Hit_Exit_Velocity", "Average exit velocity of batted balls."),
         ]
 
         # Append rows to the HTML table
         for column_name, description in data_dict:
-            data_dict_html += (
-                f"<tr><td><b>{column_name}</b></td><td>{description}</td></tr>"
-            )
+            data_dict_html += f"<tr><td><b>{column_name}</b></td><td>{description}</td></tr>"
 
+        # Close table
         data_dict_html += "</tbody></table>"
 
         # Streamlit App
