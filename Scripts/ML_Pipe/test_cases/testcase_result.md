@@ -152,7 +152,6 @@ Takes forever for mediorcer results.
 
 ### Results
 
-
                     Description             Value
 0                    Session id                42
 1                        Target         PitchofPA
@@ -176,17 +175,28 @@ Takes forever for mediorcer results.
 19                      Use GPU             False
 20               Log Experiment             False
 21              Experiment Name  reg-default-name
-22                          USI              c154
-Traceback (most recent call last):
-  File "c:\School Files\Winter 2025\Hackathon\github\GonePhishingBaseball\Scripts\ML_Pipe\test_cases\pycarrot_reg.py", line 153, in <module>
-    trained_model, df_agg = model_train()
-                            ^^^^^^^^^^^^^
-  File "c:\School Files\Winter 2025\Hackathon\github\GonePhishingBaseball\Scripts\ML_Pipe\test_cases\pycarrot_reg.py", line 141, in model_train
-    best_model = compare_models(sort="RMSE")
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\death\anaconda3\envs\test311\Lib\site-packages\pycaret\utils\generic.py", line 963, in wrapper
-    raise ValueError(message)
-ValueError: _CURRENT_EXPERIMENT global variable is not set. Please run setup() first.
+22                          USI              f374
 
+               RMSE            R2       RMSLE          MAPE  TT (Sec)
+lr        1.629200e+00  2.198000e-01   0.3109  3.774000e-01     0.282
+en        1.715000e+00  1.362000e-01   0.3406  4.360000e-01     0.212
+omp       1.761600e+00  8.860000e-02   0.3484  4.484000e-01     0.064
+lasso     1.762400e+00  8.780000e-02   0.3493  4.505000e-01     0.274
+llar      1.762400e+00  8.780000e-02   0.3493  4.505000e-01     0.069
+et        1.788200e+00  6.070000e-02   0.3514  4.499000e-01     0.175
+ridge     1.831400e+00  1.500000e-02   0.3625  4.706000e-01     0.229
+dummy     1.845600e+00 -4.000000e-04   0.3649  4.747000e-01     0.065
+lightgbm  1.849100e+00 -4.200000e-03   0.3685  4.809000e-01     0.155
+gbr       1.849200e+00 -4.300000e-03   0.3685  4.810000e-01     1.473
+dt        1.849200e+00 -4.300000e-03   0.3685  4.810000e-01     0.081
+rf        1.849200e+00 -4.300000e-03   0.3685  4.810000e-01     0.450
+ada       1.849200e+00 -4.300000e-03   0.3685  4.810000e-01     0.263
+knn       1.947400e+00 -1.146000e-01   0.3770  4.788000e-01     0.084
+xgboost   2.046500e+00 -2.303000e-01   0.3754  4.266000e-01     0.126
+par       2.237500e+00 -5.054000e-01   0.4254  5.223000e-01     0.063
+br        1.096930e+01 -3.608770e+01   0.9214  2.182900e+00     0.086
+lar       1.853328e+19 -1.013586e+39  11.1333  8.382214e+16     0.062
 
 ### Explanations
+
+Just takes to long for mediorce results.

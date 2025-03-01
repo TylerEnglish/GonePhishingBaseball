@@ -112,7 +112,7 @@ def model_train():
         - finalized_model: The finalized PyCaret regression pipeline.
         - df_agg: The aggregated and preprocessed DataFrame.
     """
-    data_path = "Derived_Data/filter/filtered_20250301_000033.parquet"  
+    data_path = "../../../Derived_Data/filter/filtered_20250301_000033.parquet"  
     if not os.path.exists(data_path):
         print(f"Data file not found at: {data_path}")
         return None, None
@@ -131,7 +131,6 @@ def model_train():
         target="PitchofPA",
         session_id=42,       # for reproducibility
         train_size=0.8,      # 80/20 split
-        silent=True,         # no interactive prompt
         log_experiment=False # disable experiment logging unless needed
     )
     
