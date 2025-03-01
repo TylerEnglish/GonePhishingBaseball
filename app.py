@@ -4,34 +4,50 @@ import plotly.express as px
 import numpy as np
 
 st.set_page_config(
-    page_title="Optimizing Pitch Sequence for Baseball",
-    layout="wide"
+    page_title="Pioneer League Metrics Group",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
-  
-data = pd.read_parquet("Derived_Data\clean\cleaned_20250228_194529.parquet")
-data_clean = data.groupby(["PAofInning", "Inning", "Top/Bottom", 'PitcherId', "PitcherTeam"]).agg({
-  'KorBB':lambda x: list(x),
-  'PlayResult':lambda x: list(x),
-  'PitchofPA':lambda x: list(x),
-  'AutoPitchType':lambda x: list(x), ## Will combine with tag later
-  'OutsOnPlay': "sum",
-  "RunsScored": "sum"
-}).reset_index()
 
-data_clean["KorBB"] = data_clean["KorBB"].str.get(-1)
+# Sidebar Navigation
+st.sidebar.header("Filters")
 
-data_clean['PlayResult'] = data_clean['PlayResult'].str.get(-1)
+data = pd.read_parquet("Derived_Data/filter/filtered_20250228_231053.parquet")
 
-data_clean['BatterResult'] = np.where(data_clean["KorBB"].isin(["Strikeout", "Walk"]), data_clean["KorBB"], data_clean["PlayResult"])
+team_names = {
+    'GRE_VOY': 'Great Falls Voyagers',
+    'BIL_MUS': 'Billings Mustangs',
+    'GLA_RAN': 'Grand Junction Rockies',
+    'BOI_HAW': 'Boise Hawks',
+    'MIS_PAD': 'Missoula PaddleHeads',
+    'OGD_RAP': 'Ogden Raptors',
+    'NOR_COL1': 'Northern Colorado Owls',
+    'IDA_CHU': 'Idaho Falls Chukars',
+    'OAK_BAL': 'Oakland Ballers',
+    'GLA_RAN1': 'Grand Junction Rockies',
+    'YOL_HIG': 'Yolo High Wheelers',
+    'ROC_VIB': 'Rocky Mountain Vibes',
+    'GRA_ROC': 'Grand Rapids Rockies'
+}
 
-data_clean['LastPitch'] = data_clean['AutoPitchType'].str.get(-1)
+data["full_name"] = data["PitcherTeam"].map(team_names)
+excluded_pitches = ["Knuckleball", "OneSeamFastBall", "Sweeper", "Other"]
+data = data.loc[~data["CleanPitchType"].isin(excluded_pitches), ]
 
-data_clean["PitcherId"] = data_clean["PitcherId"].astype(dtype=str)
+pitcher_team = data["full_name"].unique()
+# Dropdown menu with default set to 'IDA_CHU'
+selected_pitcher_team = st.sidebar.selectbox(
+    "Select a Pitcher's Team",
+    options=pitcher_team,
+    index=list(pitcher_team).index("Idaho Falls Chukars"),  # Set default to 'IDA_CHU'
+)
 
-data_explode = data_clean.explode(["AutoPitchType", "PitchofPA"])
+data = data[data["full_name"] == selected_pitcher_team]
 
 
-home, ml, outs, runs, appendix = st.tabs(["Home", "Machine Learning", "Out Analytics", "Run Analytics", "Appendix"])
+home, ml, outs, runs, appendix = st.tabs(
+    ["Home", "Machine Learning", "Out Analytics", "Run Analytics", "Appendix"]
+)
 
 with home:
     st.header("Pioneer Baseballs League Metrics Group Analysis")
@@ -41,23 +57,29 @@ with home:
         key baseball metrics to provide insights into player performance, team strategies, and game outcomes."
     )
     st.markdown("### Why This Matters")
-    st.markdown("Data-driven approaches are transforming baseball. From sabermetrics to real-time game insights, teams that embrace analytics gain a competitive edge.\
-                By applying machine learning models and statistical techniques, we can help optimize performance, enhance scouting, and refine in-game decision-making.")
+    st.markdown(
+        "Data-driven approaches are transforming baseball. From sabermetrics to real-time game insights, teams that embrace analytics gain a competitive edge.\
+                By applying machine learning models and statistical techniques, we can help optimize performance, enhance scouting, and refine in-game decision-making."
+    )
     st.markdown("### Key Features:")
     st.markdown("- **Pitching Statistics**: Pitching and outs statics on the games")
     st.markdown("- **Team Performance**: Compare teams based on various metrics.")
-    st.markdown("- **Strikeout Improvement**: Use machine learning to predict optimal pitches that should be thrown to get a player out.")
-    st.markdown("- **Machine Learning**: For Strikeout Optimization Predicting the most effective pitches to retire batters.")
-    st.markdown("- **Run Scoring Trends**: Identifying factors that influence offensive production.")
+    st.markdown(
+        "- **Strikeout Improvement**: Use machine learning to predict optimal pitches that should be thrown to get a player out."
+    )
+    st.markdown(
+        "- **Machine Learning**: For Strikeout Optimization Predicting the most effective pitches to retire batters."
+    )
+    st.markdown(
+        "- **Run Scoring Trends**: Identifying factors that influence offensive production."
+    )
 
 
 with ml:
-
     print("hello")
 
 
 with outs:
-
     ## Filters for sidebar on teams, so only look at one teams pitchers at a time
     ## Also generalized model with bars for entire data
 
@@ -65,45 +87,121 @@ with outs:
 
 
 with runs:
+    data_clean = (
+        data.groupby(["PAofInning", "Inning", "Top/Bottom", "full_name"])
+        .agg(
+            {
+                "KorBB": lambda x: list(x),
+                "PlayResult": lambda x: list(x),
+                "PitchofPA": lambda x: list(x),
+                "CleanPitchType": lambda x: list(x),  ## Will combine with tag later
+                "OutsOnPlay": "sum",
+                "RunsScored": "sum",
+            }
+        )
+        .reset_index()
+    )
+
+    data_clean["KorBB"] = data_clean["KorBB"].str.get(-1)
+
+    data_clean["PlayResult"] = data_clean["PlayResult"].str.get(-1)
+
+    data_clean["BatterResult"] = np.where(
+        data_clean["KorBB"].isin(["Strikeout", "Walk"]),
+        data_clean["KorBB"],
+        data_clean["PlayResult"],
+    )
+
+    data_clean["LastPitch"] = data_clean["CleanPitchType"].str.get(-1)
+
+    data_explode = data_clean.explode(["CleanPitchType", "PitchofPA"])
 
     st.title("Run Analytics")
-
-    runs_per_pitch = data_explode.groupby(["AutoPitchType", "PitcherTeam"]).agg({"RunsScored":"mean"}).reset_index()
-
-    colors = [
-        "#B0B3BA",  # Light Cool Gray
-        "#77B6B2",  # Brighter Teal
-        "#E3CDA8",  # Warm Sand
-        "#B5C99A",  # Olive Mist
-        "#92B6D5",  # Dusty Blue
-        "#D8A8A8",  # Rosy Blush
-        "#C4A99D"   # Soft Mocha
-    ]
-
-    # Create a Plotly bar plot
-    fig = px.bar(data, 
-                x="AutoPitchType", 
-                y="RunsScored", 
-                color="AutoPitchType", 
-                color_discrete_sequence=colors,
-                facet_col="PitcherTeam", 
-                title="Runs Scored by Pitch Type and Team",
-                labels={"AutoPitchType": "Pitch Type", "RunsScored": "Runs Scored"},
-                category_orders={"AutoPitchType": data["AutoPitchType"].unique()})
-
-    # Customize the facet titles and make text darker
-    fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[-1], font=dict(color='black')))
-
-    # Remove the legend
-    fig.update_layout(showlegend=False)
     
-    # Show the plot in Streamlit
-    st.title("MLB Pitch Analysis")
-    st.plotly_chart(fig)  # Display Plotly chart in Streamlit       
-            
+    with st.container(border=True):
+        runs_per_pitch = (
+            data_explode.groupby(["CleanPitchType", "full_name"])
+            .agg({"RunsScored": "mean"})
+            .reset_index()
+        )
+
+        colors = [
+            "#B0B3BA",  # Light Cool Gray
+            "#77B6B2",  # Brighter Teal
+            "#E3CDA8",  # Warm Sand
+            "#B5C99A",  # Olive Mist
+            "#92B6D5",  # Dusty Blue
+            "#D8A8A8",  # Rosy Blush
+            "#C4A99D",  # Soft Mocha
+        ]
+        runs_per_pitch = runs_per_pitch.sort_values('RunsScored')
+        # Create a Plotly bar plot
+        fig = px.bar(
+            runs_per_pitch,
+            x="CleanPitchType",
+            y="RunsScored",
+            color="CleanPitchType",
+            color_discrete_sequence=colors,
+            title="Runs Scored by Pitch Type and Team",
+            labels={"CleanPitchType": "Pitch Type", "RunsScored": "Runs Scored"},
+            category_orders={"CleanPitchType": runs_per_pitch["CleanPitchType"].unique()},
+        )
+
+        # Customize the facet titles and make text darker
+        fig.for_each_annotation(
+            lambda a: a.update(text=a.text.split("=")[-1], font=dict(color="black"))
+        )
+
+        # Remove the legend
+        fig.update_layout(showlegend=False)
+
+        # Show the plot in Streamlit
+        st.markdown(f"## **Runs by Pitch Type for {selected_pitcher_team}**")
+        st.plotly_chart(fig)  # Display Plotly chart in Streamlit
+    
+    with st.container(border=True):
+        # Last pitch with Play Result
+        last_pitch_result = (
+            data_clean.groupby(["LastPitch", "BatterResult"])
+            .agg(count = ("RunsScored", "count"))
+            .reset_index()
+        )
+
+        colors = [
+            "#B0B3BA",  # Light Cool Gray
+            "#77B6B2",  # Brighter Teal
+            "#E3CDA8",  # Warm Sand
+            "#B5C99A",  # Olive Mist
+            "#92B6D5",  # Dusty Blue
+            "#D8A8A8",  # Rosy Blush
+            "#C4A99D",  # Soft Mocha
+        ]
+
+        # Create a Plotly bar plot
+        fig = px.scatter(
+            last_pitch_result,
+            x="LastPitch",
+            y="count",
+            color="BatterResult",
+            color_discrete_sequence=colors,
+            title="Runs Scored by Pitch Type and Team",
+            labels={"LastPitch": "Pitch Type", "count": "Result of At Bat Count"},
+            category_orders={"CleanPitchType": runs_per_pitch["CleanPitchType"].unique()},
+        )
+
+        # Customize the facet titles and make text darker
+        fig.for_each_annotation(
+            lambda a: a.update(text=a.text.split("=")[-1], font=dict(color="black"))
+        )
+
+        # Remove the legend
+        fig.update_layout(showlegend=False)
+
+        # Show the plot in Streamlit
+        st.title(f"Runs by Pitch Type for {selected_pitcher_team}")
+        st.plotly_chart(fig)  # Display Plotly chart in Streamlit
 
 with appendix:
-
     st.title("Appendix")
 
     # Convert data dictionary into an HTML table with bold column names
@@ -136,7 +234,7 @@ with appendix:
         ("Strikes", "Count of strikes before the pitch."),
         ("PitchCall", "Outcome of the pitch (Ball, Strike, etc.)."),
         ("KorBB", "Strikeout (K) or walk (BB)."),
-        ("CleanPitchType", "Categorized pitch type (e.g., Fastball, Slider)."),
+        ("CleanPitchType", "Categorized pitch type (e.g., Fastball, Slider) and combines TaggedPitchType and AutoPitchType."),
         ("TaggedHitType", "Manually reviewed hit type (e.g., Line Drive, Fly Ball)."),
         ("PlayResult", "Result of the play (Single, Out, etc.)."),
         ("OutsOnPlay", "Number of outs recorded on the play."),
@@ -193,7 +291,9 @@ with appendix:
 
     # Append rows to the HTML table
     for column_name, description in data_dict:
-        data_dict_html += f"<tr><td><b>{column_name}</b></td><td>{description}</td></tr>"
+        data_dict_html += (
+            f"<tr><td><b>{column_name}</b></td><td>{description}</td></tr>"
+        )
 
     data_dict_html += "</tbody></table>"
 
@@ -203,7 +303,3 @@ with appendix:
 
     # Display the table using Markdown
     st.markdown(data_dict_html, unsafe_allow_html=True)
-
-
-
-
