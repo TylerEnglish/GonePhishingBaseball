@@ -76,7 +76,7 @@ if selected_pitcher_team != "All Teams":
     data = data[data["TeamName"] == selected_pitcher_team]
 
 home, ml, outs, runs, outs_by, appendix, future = st.tabs(
-    ["Home", "Machine Learning", "Out Analytics", "Run Analytics", "Strikes and Outs", "Appendix", "Future Goals"]
+    ["Home", "Machine Learning", "Out Analytics", "Run Analytics", "Strikes and Outs", "Appendix", "Hackathon Journey"]
 )
 
 with home:
@@ -111,26 +111,31 @@ with ml:
     with col1:
         st.markdown(
             """
-            <div style="text-align: center; margin-right: 25%;">
+            <div style="text-align: left; margin-right: 25%;">
                 <h4>Starting Metrics</h4>
             </div>
             """,
             unsafe_allow_html=True
         )
-        prev_score = pd.DataFrame([  
-            [0.644389, 0.494324, 0.524348]  
+        prev_score = pd.DataFrame([
+            [0.644389, 0.494324, 0.524348]
         ], columns=["Accuracy", "F1", "Precision"])
         st.markdown(prev_score.style.hide(axis="index").to_html(), unsafe_allow_html=True)
-
     with col2:
         st.markdown(
             """
-            <div style="text-align: center; margin-right: 25%;">
+            <div style="text-align: left; margin-right: 25%;">
                 <h4>Best Metrics Achieved</h4>
             </div>
             """,
             unsafe_allow_html=True
         )
+        score = pd.read_csv("Derived_Data/model_pred/scores.csv")
+        score["accuracy"] = score["accuracy"]
+        score["f1"] = score["f1"]
+        score["precision"] = score["precision"]
+        score.columns = ["Accuracy", "F1", "Precision"]
+        st.markdown(score.style.hide(axis="index").to_html(), unsafe_allow_html=True)
         score = pd.read_csv("Derived_Data/model_pred/scores.csv")
         score["accuracy"] = score["accuracy"]
         score["f1"] = score["f1"]
@@ -680,10 +685,61 @@ with appendix:
             st.plotly_chart(fig)
 
         with future:
-            st.title("The Future")
-            st.markdown("### Accomplishments")
-            st.markdown("- Data Analytics ")
+            st.title("Hackathon Journey")
+
+            st.markdown("### Background")
+            st.markdown("- Data from Pioneer Baseball League")
+            st.markdown("- We were asked to make a Machine Learning Model to predict the best pitching sequence to strike out an opposing batter")
+
+            st.markdown("### Summary of Machine Learning")
+            st.markdown("- **Data Cleaning**: Cleaned the data by merging columns, resolving Nulls, filtering out data, and fixing data types")
+
+st.title("Hackathon Journey")
+
+st.markdown("### Background")
+st.markdown("- Data from Pioneer Baseball League")
+st.markdown("- We were asked to make a Machine Learning Model to predict the best pitching sequence to strike out an opposing batter")
+
+st.markdown("### Summary of Machine Learning")
+st.markdown("- **Data Cleaning**: Cleaned the data by merging columns, resolving Nulls, filtering out data, and fixing data types")
+
+st.markdown("- **Feature Engineering**:")
+st.markdown("    - **Basic Feature Engineering**:")
+st.markdown("        - Grouping: Data is grouped by Date, PitchNo, PitcherId, and BatterId.")
+st.markdown("        - **Key Metrics:**")
+st.markdown("            - Avg_Pitch_Speed: Mean release speed (RelSpeed).")
+st.markdown("            - Release Angles & Spin: Average vertical (VertRelAngle) and horizontal (HorzRelAngle) release angles, spin rate, and spin axis.")
+st.markdown("            - Count-Based Rates: Strike and ball percentages from PitchCall.")
+st.markdown("            - Outcome Metrics: Total Outs Created and average plate location (PlateLocHeight/PlateLocSide).")
+st.markdown("        - **Purpose:** Provides foundational insights into pitch quality and release mechanics on a per-plate appearance basis.")
+
+st.markdown("    - **Advanced Feature Engineering**:")
+st.markdown("        - Aggregation of Pitch Sequencing:")
+st.markdown("            - Pitch_Type_Diversity & Sequencing Entropy: Measures the variety and unpredictability of pitch types using Shannon entropy.")
+st.markdown("            - Movement Ratios: Vertical vs. Horizontal break ratios and Pitch Zonal Targeting based on PlateLocHeight.")
+st.markdown("            - Velocity Metrics: Maximum Effective Velocity and Avg_Velocity_Drop.")
+st.markdown("            - Pitch Mix Ratios: Breaking Ball Ratio and Fastball-to-Offspeed Ratio.")
+st.markdown("            - Release Consistency: Deviation in release extension, reflecting mechanical consistency.")
+st.markdown("            - Avg_Hit_Exit_Velocity: Average exit speed of batted balls.")
+st.markdown("        - **Purpose:** Captures deeper strategic elements and pitch movement profiles that influence batter performance.")
+
+st.markdown("    - **More Advanced Feature Engineering**:")
+st.markdown("        - Enhanced Metrics with Smoothing:")
+st.markdown("            - Combining pitch-level, matchup-level, and batter-level data with Laplace smoothing (alpha=1, beta=2) to ensure robustness:")
+st.markdown("            - Pitch-Level: Includes Pitch_Type_Variance, Speed_Consistency, Change_in_Speed_Per_Pitch, and Pitcher_Aggressiveness.")
+st.markdown("            - Matchup-Level: Computes smoothed Hit_Probability and Strikeout_Likelihood for each pitcher-batter pair.")
+st.markdown("            - Batter-Level: Determines Batter_Strikeout_Tendency.")
+st.markdown("        - **Purpose:** Integrates individual pitch details with overall matchup trends to create a comprehensive feature set for predicting optimal pitch sequences.")
+
+st.markdown("- **Baseline Models Tested**: TabNetClassifier, PyCaretClassifier, TabNetRegressor, PyCaretRegressor, XGBoost")
+st.markdown("- **Findings**: TabNet performed best for classification, while XGBoost was slightly superior for regression.")
+st.markdown("- **Test Case Model**: PyCaretClassifier performed well with basic features but switching to TabNetClassifier yielded even better results.")
+st.markdown("  PyCaretRegressor underperformed on base features; TabNetRegressor showed slight improvement, but XGBoost emerged as the best regressor.")
+
+st.markdown("### Streamlit Implementation")
+st.markdown("- Built framework and filled in fields about our project")
+st.markdown("- Data exploration while creating graphs and looking for outliers.")
+st.markdown("- Made charts after data exploration and found good insights into the data.")
+st.markdown("- Made ML integration - Allows for file upload and insertion of data")
 
 
-            st.markdown("### Future Goals")
-            st.markdown("- **Catcher Model** We want to create a model for the catcher")
