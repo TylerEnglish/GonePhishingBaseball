@@ -25,31 +25,34 @@ from imblearn.under_sampling import RandomUnderSampler
 
 def advanced_data_cleaning(df, target_col, categorical_cols):
     """
-    1. Impute numeric columns by median.
-    2. Impute categorical columns with "Missing".
+    1. Impute numeric columns with median.
+    2. Impute categorical columns with 'Missing'.
     3. Drop rows where target_col is missing.
     """
     df_clean = df.copy(deep=True)
     
-    # Numeric columns
+    # Identify numeric columns (excluding the target)
     numeric_cols = df_clean.select_dtypes(include=[np.number]).columns.tolist()
     numeric_cols = [col for col in numeric_cols if col != target_col]
+    
+    # Impute numeric columns using median
     numeric_imputer = SimpleImputer(strategy='median')
     df_clean[numeric_cols] = numeric_imputer.fit_transform(df_clean[numeric_cols])
     
-    # Categorical columns
+    # Impute categorical columns with 'Missing'
     for cat_col in categorical_cols:
         if cat_col not in df_clean.columns:
             continue
         df_clean[cat_col] = df_clean[cat_col].fillna('Missing')
     
-    # Drop rows where target is missing
+    # Drop rows where the target is missing
     df_clean = df_clean.dropna(subset=[target_col])
     return df_clean
 
 def encode_categorical_columns(df, categorical_cols, encoders=None):
     """
-    Label-encode each categorical column. If encoders is None, new encoders are fit.
+    Label-encode each categorical column.
+    If encoders is None, we fit new encoders; otherwise we reuse them (for inference).
     Returns (df_encoded, encoders).
     """
     df_encoded = df.copy()
@@ -88,8 +91,8 @@ def mutual_info_feature_selection(X, y, feature_cols, top_k=20):
 
 def augment_data_with_noise(X, noise_level=0.01):
     """
-    Add Gaussian noise to numeric features for data augmentation.
-    noise_level is relative, e.g. 0.01 = 1% of std.
+    Adds Gaussian noise to numeric features for data augmentation.
+    noise_level is relative (e.g., 0.01 = 1% of each feature's std).
     """
     X_noisy = X.copy()
     std_vec = np.std(X_noisy, axis=0)
@@ -134,23 +137,20 @@ class TabularDataset(Dataset):
 class TabTransformer(nn.Module):
     """
     A minimal Transformer-based model for tabular data.
-    - Numeric features are passed through a linear layer (optionally).
-    - Categorical features are turned into embeddings.
-    - Concatenate or sum these embeddings to form a sequence, then pass through
-      a standard Transformer encoder.
-    - Finally, average pool or CLS token to produce a classification logit.
-    
-    Note: The architecture can be adapted in many ways. This is just an example.
-    
-    Usage:
-      - Provide a dimension for embeddings (model_dim).
-      - Provide how many heads, layers, etc.
-      - Provide # of numeric features vs # of categorical features.
+      - Numeric features -> linear layer
+      - Categorical features -> embeddings
+      - Combine into a sequence -> Transformer Encoder
+      - Average pool the sequence -> classification head
+
+    model_dim: dimension of embeddings (and Transformer model)
+    num_heads: number of attention heads
+    num_layers: number of Transformer encoder layers
+    num_categories_list: a list of integers, each representing the cardinality of a cat column
     """
     def __init__(
         self,
         num_numeric,
-        num_categories_list,  # list of unique cat counts for each categorical col
+        num_categories_list,
         model_dim=32,
         num_heads=4,
         num_layers=2,
@@ -166,134 +166,80 @@ class TabTransformer(nn.Module):
         # Embeddings for each categorical feature
         # Each cat feature gets an embedding of size model_dim
         self.cat_embeddings = nn.ModuleList([
-            nn.Embedding(num_cats, model_dim)
-            for num_cats in num_categories_list
+            nn.Embedding(cat_size, model_dim)
+            for cat_size in num_categories_list
         ])
         
-        # Linear embedding for numeric features (optional)
-        # We can embed numeric features into model_dim dimension for each numeric feature,
-        # or handle them differently. Here we do a single linear to model_dim:
-        if self.num_numeric > 0:
-            self.numeric_linear = nn.Linear(num_numeric, model_dim)
-        else:
-            self.numeric_linear = None
+        # Optional linear for numeric features
+        self.numeric_linear = (
+            nn.Linear(num_numeric, model_dim) if num_numeric > 0 else None
+        )
         
         # Transformer encoder
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=model_dim,
             nhead=num_heads,
-            dim_feedforward=model_dim*4,
+            dim_feedforward=model_dim * 4,
             dropout=0.1,
             batch_first=True
         )
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
         
         # Classification head
-        # We'll use a simple pooling approach (mean pool across the sequence).
         self.fc_out = nn.Linear(model_dim, num_classes)
     
     def forward(self, x_numeric, x_categorical):
         """
         x_numeric: [batch_size, num_numeric]
-        x_categorical: list of [batch_size] for each cat col OR [batch_size, num_cats]
+        x_categorical: [batch_size, num_cats]
         """
         batch_size = x_numeric.size(0)
         
-        # Embeddings for categorical features
+        # Embed categorical features
         cat_embs = []
         for i, emb_layer in enumerate(self.cat_embeddings):
-            # x_categorical[:, i] => shape [batch_size]
-            # After embedding => [batch_size, model_dim]
-            emb = emb_layer(x_categorical[:, i])
+            emb = emb_layer(x_categorical[:, i])  # [batch_size, model_dim]
             cat_embs.append(emb)
         if len(cat_embs) > 0:
             cat_embs = torch.stack(cat_embs, dim=1)  # [batch_size, num_cats, model_dim]
         else:
             cat_embs = None
         
-        # Embedding for numeric features
+        # Embed numeric features
         if self.numeric_linear is not None:
-            # [batch_size, num_numeric] -> [batch_size, model_dim]
-            num_emb = self.numeric_linear(x_numeric)
-            # We'll treat each numeric row as a single "token" (just an example approach).
-            num_emb = num_emb.unsqueeze(1)  # [batch_size, 1, model_dim]
+            num_emb = self.numeric_linear(x_numeric)  # [batch_size, model_dim]
+            num_emb = num_emb.unsqueeze(1)            # [batch_size, 1, model_dim]
         else:
             num_emb = None
         
-        # Combine numeric "token" with the cat embeddings to form a sequence
-        if cat_embs is not None and num_emb is not None:
-            seq = torch.cat([num_emb, cat_embs], dim=1)  # shape [batch_size, (1 + num_cats), model_dim]
-        elif cat_embs is None:
-            seq = num_emb
+        # Combine
+        if num_emb is not None and cat_embs is not None:
+            x_seq = torch.cat([num_emb, cat_embs], dim=1)  # [batch_size, (1 + num_cats), model_dim]
+        elif num_emb is not None:
+            x_seq = num_emb
         else:
-            seq = cat_embs
+            x_seq = cat_embs
         
         # Pass through Transformer
-        # shape remains [batch_size, seq_len, model_dim]
-        x_enc = self.transformer_encoder(seq)  
+        x_enc = self.transformer_encoder(x_seq)  # [batch_size, seq_len, model_dim]
         
-        # Pooling: mean pool across seq_len dimension
-        # x_enc => [batch_size, seq_len, model_dim]
-        x_pooled = x_enc.mean(dim=1)  # [batch_size, model_dim]
+        # Mean pool across sequence tokens
+        x_pooled = x_enc.mean(dim=1)             # [batch_size, model_dim]
         
         # Classification
-        logits = self.fc_out(x_pooled)  # [batch_size, num_classes]
-        
+        logits = self.fc_out(x_pooled)           # [batch_size, num_classes]
         return logits
 
 ###############################################################################
-# TRAINING & EVALUATION FUNCTIONS FOR OUR TRANSFORMER MODEL
-###############################################################################
-
-def train_one_epoch(model, dataloader, optimizer, criterion, device):
-    model.train()
-    total_loss = 0
-    for X_batch, y_batch in dataloader:
-        # X_batch => shape [batch_size, num_features]
-        # We need to split numeric vs cat features
-        X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-
-        # Suppose numeric features come first, cat features come last
-        # We'll define a split scheme externally or dynamically
-        # We'll guess: numeric_cols + cat_cols = total features
-        # For example, let's store that info in the dataloader via closure or something:
-        # but let's do a simpler approach:
-        
-        # We'll assume cat indices are integer-coded in last columns,
-        # numeric in first columns. We need the actual split index:
-        # Because we might not know them in code, let's say we store them globally or pass them in.
-        # We'll assume we stored them in the dataloader. For brevity, let's define placeholders:
-        
-        # We can't do this inside the function without that info. We'll pass in a global or add as param
-        raise NotImplementedError("You need to split numeric vs cat inside the loop. See code below for an example.")
-
-
-def evaluate_model(model, dataloader, device):
-    model.eval()
-    preds_all = []
-    labels_all = []
-    
-    with torch.no_grad():
-        for X_batch, y_batch in dataloader:
-            X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-            # Similar numeric/categorical split needed here.
-            raise NotImplementedError("Split numeric vs cat for inference. Return predictions.")
-    
-    # Once we've done the inference, compute accuracy/f1.
-    # ...
-    return accuracy, f1
-
-
-###############################################################################
-# A FULL (WORKING) EXAMPLE, WITH SPLIT OF NUMERIC AND CATS
+# TRAINING WRAPPER
 ###############################################################################
 
 class TabTransformerTrainer:
     """
-    A small helper class that:
-     - Splits features into numeric vs cat columns
-     - Builds the TabTransformer
-     - Provides fit/predict methods
+    Helper that:
+     1) Splits features into numeric vs cat
+     2) Builds and trains the TabTransformer
+     3) Exposes fit/evaluate/predict methods
     """
     def __init__(
         self,
@@ -308,10 +254,6 @@ class TabTransformerTrainer:
         epochs=10,
         device='cpu'
     ):
-        """
-        numeric_dims: number of numeric columns
-        cat_dims: list of cardinalities for each categorical column
-        """
         self.device = device
         self.batch_size = batch_size
         self.epochs = epochs
@@ -328,22 +270,25 @@ class TabTransformerTrainer:
         self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
         self.criterion = nn.CrossEntropyLoss()
         
-        # Remember how many numeric vs cat columns
+        # Store numeric/cat info for splitting
         self.numeric_dims = numeric_dims
         self.cat_dims = cat_dims
     
     def _split_features(self, X):
         """
-        X is shape [batch_size, total_features].
-        The first self.numeric_dims are numeric, the rest are cat.
-        We return x_numeric, x_cat (as int64).
+        X: shape [batch_size, total_features].
+        The first self.numeric_dims columns => numeric
+        The rest => cat
         """
-        x_numeric = X[:, :self.numeric_dims]
+        x_num = X[:, :self.numeric_dims]
         x_cat = X[:, self.numeric_dims:].long()
-        return x_numeric, x_cat
+        return x_num, x_cat
     
     def fit(self, X_train, y_train, X_valid=None, y_valid=None):
-        # Create datasets
+        """
+        Train the model for self.epochs epochs.
+        If X_valid, y_valid are provided, evaluate after each epoch.
+        """
         train_ds = TabularDataset(X_train, y_train)
         train_dl = DataLoader(train_ds, batch_size=self.batch_size, shuffle=True)
         
@@ -381,6 +326,9 @@ class TabTransformerTrainer:
                 print(f"Epoch {epoch+1}/{self.epochs} - Loss: {avg_loss:.4f}")
     
     def evaluate(self, dataloader):
+        """
+        Evaluate on a given dataloader. Returns (accuracy, f1).
+        """
         self.model.eval()
         preds_all = []
         labels_all = []
@@ -467,15 +415,14 @@ def cross_validate_transformer(
     X = df[feature_cols].values
     y = df[target_col].values
     
-    # If top_k_features is specified, do mutual_info selection
+    # (Optional) mutual_info feature selection
     if top_k_features is not None:
         mi_selected_features = mutual_info_feature_selection(X, y, feature_cols, top_k=top_k_features)
         df_selected = df[mi_selected_features + [target_col]].copy()
         
-        # We also need to update numeric_cols, cat_cols based on selected features
+        # Update numeric_cols, cat_cols based on new feature set
         numeric_cols = [c for c in numeric_cols if c in mi_selected_features]
         cat_cols = [c for c in cat_cols if c in mi_selected_features]
-        
         feature_cols = mi_selected_features
     else:
         df_selected = df.copy()
@@ -483,7 +430,6 @@ def cross_validate_transformer(
     X = df_selected[feature_cols].values
     y = df_selected[target_col].values
     
-    # Create folds
     skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
     results = []
     
@@ -492,42 +438,33 @@ def cross_validate_transformer(
         X_train, X_valid = X[train_idx], X[valid_idx]
         y_train, y_valid = y[train_idx], y[valid_idx]
         
-        # SMOTE (optional)
+        # SMOTE
         sm = SMOTE(random_state=42)
         X_train_sm, y_train_sm = sm.fit_resample(X_train, y_train)
         
-        # Add noise (optional)
-        X_train_sm_noisy = augment_data_with_noise(X_train_sm, noise_level=0.01)
+        # Noise injection (optional)
+        X_train_noisy = augment_data_with_noise(X_train_sm, noise_level=0.01)
         
-        # Next, we might scale numeric columns only
-        # We'll do that in-place. We must do it carefully (only numeric portion).
-        # numeric_indices, cat_indices
+        # Scale only numeric columns
         numeric_indices = [feature_cols.index(c) for c in numeric_cols]
-        cat_indices = [feature_cols.index(c) for c in cat_cols]
-        
-        # Scale numeric columns in X_train_sm_noisy, X_valid
         scaler = StandardScaler()
         
-        # Extract numeric part
-        X_train_num = X_train_sm_noisy[:, numeric_indices]
+        X_train_num = X_train_noisy[:, numeric_indices]
         X_valid_num = X_valid[:, numeric_indices]
         
-        X_train_num_scaled = scaler.fit_transform(X_train_num)
-        X_valid_num_scaled = scaler.transform(X_valid_num)
+        X_train_num_sc = scaler.fit_transform(X_train_num)
+        X_valid_num_sc = scaler.transform(X_valid_num)
         
-        # Put scaled values back
-        X_train_sm_noisy[:, numeric_indices] = X_train_num_scaled
-        X_valid[:, numeric_indices] = X_valid_num_scaled
+        X_train_noisy[:, numeric_indices] = X_train_num_sc
+        X_valid[:, numeric_indices] = X_valid_num_sc
         
-        # Now define the model
-        # We need cat cardinalities for each cat col, or pass them in
-        # We'll assume cat_cardinalities is in the same order as cat_cols
+        # Build local cat_dims (order must match cat_cols)
         cat_dims_local = []
         for cat_col in cat_cols:
-            # Find index of cat_col in cat_cols
             i = cat_cols.index(cat_col)
             cat_dims_local.append(cat_cardinalities[i])
         
+        # Initialize trainer
         trainer = TabTransformerTrainer(
             numeric_dims=len(numeric_cols),
             cat_dims=cat_dims_local,
@@ -542,7 +479,7 @@ def cross_validate_transformer(
         )
         
         # Train
-        trainer.fit(X_train_sm_noisy, y_train_sm, X_valid, y_valid)
+        trainer.fit(X_train_noisy, y_train_sm, X_valid, y_valid)
         
         # Evaluate
         valid_ds = TabularDataset(X_valid, y_valid)
@@ -551,7 +488,7 @@ def cross_validate_transformer(
         print(f"Fold {fold_idx+1} - ACC: {acc_val:.4f}, F1: {f1_val:.4f}")
         results.append((acc_val, f1_val))
     
-    # Print overall CV results
+    # Summarize cross-validation
     accs = [r[0] for r in results]
     f1s = [r[1] for r in results]
     print("\n=== Cross-Validation Summary ===")
@@ -559,10 +496,17 @@ def cross_validate_transformer(
     print(f"Mean F1 : {np.mean(f1s):.4f} ± {np.std(f1s):.4f}")
 
 ###############################################################################
-# MAIN SCRIPT-LIKE FUNCTION
+# MAIN PIPELINE
 ###############################################################################
 
 def main_transformer_pipeline(data_path="data.parquet", device=None):
+    """
+    1. Load data
+    2. Clean & encode
+    3. (Optional) cross-validate
+    4. Final train/validation split
+    5. Return pipeline objects
+    """
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
     
@@ -573,59 +517,60 @@ def main_transformer_pipeline(data_path="data.parquet", device=None):
     print(f"Reading data from: {data_path}")
     df = pq.read_table(source=data_path).to_pandas()
     
-    # Define target column
+    # Define target
     target_col = "PitchCall"
     
     # Identify categorical columns
     all_object_cols = df.select_dtypes(include=['object']).columns.tolist()
     
-    # If PitcherId, BatterId are numeric but should be categorical, convert them to str
+    # Example: if pitcher/batter IDs are numeric but should be cat, do:
     # df["PitcherId"] = df["PitcherId"].astype(str)
     # df["BatterId"] = df["BatterId"].astype(str)
     
-    # Build final list of categorical columns
+    # Build final list of cat columns
     if target_col in all_object_cols:
-        # remove target col from cat list
         all_object_cols.remove(target_col)
     categorical_cols = all_object_cols
     
-    # Basic cleaning
+    # Clean
     df_clean = advanced_data_cleaning(df, target_col, categorical_cols)
     
-    # If target is object, encode it
+    # Encode target if it's object
     if df_clean[target_col].dtype == 'object':
         le_target = LabelEncoder()
         df_clean[target_col] = le_target.fit_transform(df_clean[target_col])
     else:
         le_target = None
     
-    # Now encode cat features
+    # Encode cat features
     df_encoded, encoders = encode_categorical_columns(df_clean, categorical_cols, encoders=None)
     
-    # Build feature list
+    # Prepare features
     feature_cols = [c for c in df_encoded.columns if c != target_col]
     
-    # Identify which are numeric vs cat
+    # Distinguish numeric vs cat
     numeric_cols = df_encoded.select_dtypes(include=[np.number]).columns.tolist()
-    # But we have also encoded the cat columns => they're numeric now.
-    # We must separate them carefully. Because we label-encoded them, we should keep track.
-    # We'll define:
-    cat_cols = list(categorical_cols)  # the original cat columns
-    # But now they're also numeric. Let's remove them from numeric_cols to avoid duplication:
+    # We have label-encoded cat cols => also numeric. We'll separate them by name:
+    cat_cols = list(categorical_cols)  # original cat
+    # Remove those cat cols from numeric_cols so we don't double-count
     numeric_cols = [c for c in numeric_cols if c not in cat_cols and c != target_col]
     
-    # We also need the cardinalities for each cat column
+    # Compute cardinalities for cat cols
     cat_cardinalities = []
-    for col in cat_cols:
-        cat_cardinalities.append(df_encoded[col].max() + 1)  # since it's label-encoded from 0..max
+    for c in cat_cols:
+        max_val = df_encoded[c].max()
+        cat_cardinalities.append(int(max_val + 1))  # label-encoded from 0..max
     
-    # Type cast cat columns to int if not already
+    # Convert cat columns to int (label-encoded)
     for c in cat_cols:
         df_encoded[c] = df_encoded[c].astype(int)
     
     # Number of classes
-    num_classes = len(df_clean[target_col].unique())  # or len(np.unique(df_clean[target_col]))
+    num_classes = df_encoded[target_col].nunique()
     
+    # --------------------------
+    # Cross-validation (optional)
+    # --------------------------
     print("\n===== CROSS VALIDATION STAGE =====")
     cross_validate_transformer(
         df=df_encoded,
@@ -636,41 +581,44 @@ def main_transformer_pipeline(data_path="data.parquet", device=None):
         cat_cardinalities=cat_cardinalities,
         num_classes=num_classes,
         n_splits=3,
-        top_k_features=20,  # mutual info feature selection
+        top_k_features=20,
         device=device
     )
     
+    # --------------------------
+    # Final Training
+    # --------------------------
     print("\n===== FINAL TRAINING STAGE =====")
-    # A simplified approach to final training:
-    # 1. Possibly re-do feature selection or skip
-    # 2. Train on entire data (or train/val split)
-    # Here we do a quick train/val split:
     
     X = df_encoded[feature_cols].values
     y = df_encoded[target_col].values
     
-    X_train, X_valid, y_train, y_valid = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
+    # Train/val split
+    X_train, X_val, y_train, y_val = train_test_split(
+        X, y, test_size=0.2, stratify=y, random_state=42
     )
     
     # SMOTE
     sm = SMOTE(random_state=42)
     X_train_sm, y_train_sm = sm.fit_resample(X_train, y_train)
+    
+    # Noise injection
     X_train_sm_noisy = augment_data_with_noise(X_train_sm, noise_level=0.01)
     
-    # Scale numeric
-    numeric_indices = [feature_cols.index(c) for c in numeric_cols]
+    # Scale numeric features
+    numeric_idxs = [feature_cols.index(c) for c in numeric_cols]
     scaler = StandardScaler()
     
-    X_train_num = X_train_sm_noisy[:, numeric_indices]
-    X_valid_num = X_valid[:, numeric_indices]
+    X_train_num = X_train_sm_noisy[:, numeric_idxs]
+    X_val_num = X_val[:, numeric_idxs]
     
-    X_train_num_scaled = scaler.fit_transform(X_train_num)
-    X_valid_num_scaled = scaler.transform(X_valid_num)
+    X_train_num_sc = scaler.fit_transform(X_train_num)
+    X_val_num_sc = scaler.transform(X_val_num)
     
-    X_train_sm_noisy[:, numeric_indices] = X_train_num_scaled
-    X_valid[:, numeric_indices] = X_valid_num_scaled
+    X_train_sm_noisy[:, numeric_idxs] = X_train_num_sc
+    X_val[:, numeric_idxs] = X_val_num_sc
     
+    # Build final trainer
     final_trainer = TabTransformerTrainer(
         numeric_dims=len(numeric_cols),
         cat_dims=cat_cardinalities,
@@ -684,14 +632,16 @@ def main_transformer_pipeline(data_path="data.parquet", device=None):
         device=device
     )
     
-    final_trainer.fit(X_train_sm_noisy, y_train_sm, X_valid, y_valid)
-    # Evaluate final
-    valid_ds = TabularDataset(X_valid, y_valid)
-    valid_dl = DataLoader(valid_ds, batch_size=512, shuffle=False)
-    acc_val, f1_val = final_trainer.evaluate(valid_dl)
-    print(f"\nFinal Validation - ACC: {acc_val:.4f}, F1: {f1_val:.4f}")
+    # Train final model
+    final_trainer.fit(X_train_sm_noisy, y_train_sm, X_val, y_val)
     
-    # Return objects needed for inference
+    # Final evaluation
+    val_ds = TabularDataset(X_val, y_val)
+    val_dl = DataLoader(val_ds, batch_size=512, shuffle=False)
+    acc_val, f1_val = final_trainer.evaluate(val_dl)
+    print(f"\nFinal Validation => ACC: {acc_val:.4f}, F1: {f1_val:.4f}")
+    
+    # Return pipeline objects
     return {
         "model_trainer": final_trainer,
         "scaler": scaler,
@@ -699,22 +649,19 @@ def main_transformer_pipeline(data_path="data.parquet", device=None):
         "cat_cols": cat_cols,
         "feature_cols": feature_cols,
         "target_encoder": le_target,
+        "encoders": encoders,
         "df_processed": df_encoded
     }
-
 
 ###############################################################################
 # EXAMPLE USAGE
 ###############################################################################
 
 if __name__ == "__main__":
-    data_path = "Derived_Data/feature/nDate_feature.parquet"
+    data_path = "Derived_Data/feature/nDate_feature.parquet"  # Adapt to your real path
     
     pipeline_objects = main_transformer_pipeline(data_path=data_path)
     
-    # For inference:
-    # 1. Prepare new data the same way (clean, encode cats, scale numeric, etc.).
-    # 2. Then call final_trainer.predict(...) or predict_proba(...).
     if pipeline_objects is not None:
         final_trainer = pipeline_objects["model_trainer"]
         scaler = pipeline_objects["scaler"]
@@ -722,16 +669,17 @@ if __name__ == "__main__":
         cat_cols = pipeline_objects["cat_cols"]
         feature_cols = pipeline_objects["feature_cols"]
         
-        # Example: Predict on a small subset of the original data
         df_proc = pipeline_objects["df_processed"]
+        
+        # Example inference on 5 rows
         sample = df_proc.iloc[:5].copy()
         X_sample = sample[feature_cols].values
         
-        # Scale numeric
+        # Scale numeric columns
         numeric_idxs = [feature_cols.index(c) for c in numeric_cols]
         X_sample_num = X_sample[:, numeric_idxs]
-        X_sample_num_scaled = scaler.transform(X_sample_num)
-        X_sample[:, numeric_idxs] = X_sample_num_scaled
+        X_sample_num_sc = scaler.transform(X_sample_num)
+        X_sample[:, numeric_idxs] = X_sample_num_sc
         
         preds = final_trainer.predict(X_sample)
         print("\nSample Predictions:", preds)

@@ -10,8 +10,8 @@ if __name__ == "__main__":
     from num_pitches import model_train as train_reg, predict as predict_reg
     from pitching_option import model_train as train_cls, predict as predict_cls
 else:
-    from ML_Pipe.Base_Models.num_pitches import model_train as train_reg, predict as predict_reg
-    from ML_Pipe.Base_Models.pitching_option import model_train as train_cls, predict as predict_cls
+    from ML_Pipe.Base_Models.num_pitches import model_train as train_reg, predict as predict_reg, build_model as build_reg_model
+    from ML_Pipe.Base_Models.pitching_option import model_train as train_cls, predict as predict_cls, build_model as build_cls_model
 
 
 # =================================
@@ -152,11 +152,9 @@ def predict(pitcher_ids=None, batter_ids=None, n_pitches=10):
     if not os.path.exists(reg_model_path) or not os.path.exists(cls_model_path):
         raise ValueError(f"No saved model zip files found in {model_dir}; run training first.")
 
-    from num_pitches import build_model as build_reg_model, predict as predict_reg
     reg_model = build_reg_model()
     reg_model.load_model(reg_model_path)
 
-    from pitching_option import build_model as build_cls_model, predict as predict_cls
     cls_model = build_cls_model()
     cls_model.load_model(cls_model_path)
 

@@ -53,6 +53,7 @@ def train(df, model, encoders, feature_cols, target_col):
     )
     
     # Scale features.
+
     scaler = StandardScaler()
     X_train = scaler.fit_transform(X_train)
     X_valid = scaler.transform(X_valid)
