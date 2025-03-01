@@ -243,8 +243,8 @@ def predict(pitcher_ids=None, batter_ids=None, n_pitches=10):
                 if not os.path.exists(out_dir):
                     os.makedirs(out_dir)
                 df_cls = pd.concat(cls_records, ignore_index=True) if cls_records else pd.DataFrame()
-                reg_out_path = os.path.join(out_dir, f"reg_prediction_report_{p_id}_{b_id}.csv")
-                cls_out_path = os.path.join(out_dir, f"cls_prediction_report_{p_id}_{b_id}.csv")
+                reg_out_path = os.path.join(out_dir, f"reg_prediction_report_{int(p_id)}_{int(b_id)}.csv")
+                cls_out_path = os.path.join(out_dir, f"cls_prediction_report_{int(p_id)}_{int(b_id)}.csv")
                 df_reg.to_csv(reg_out_path, index=False)
                 df_cls.to_csv(cls_out_path, index=False)
 
@@ -280,12 +280,12 @@ def training_pipe():
 
 if __name__ == "__main__":
     # Example 1: Run the full pipeline (train + save + predict)
-    training_pipe()
+    # training_pipe()
 
     # Example 2: If models & extras are already saved, just do predictions
     # (comment out the training_pipe if you only want to do inference)
-    # pitcher_id = [1000066910.0,1000060505.0,701628.0,815136.0,1000056876.0]
-    # batter_id = [1000032366.0, 1000274194.0,1000035496.0,1000056633.0,683106.0]
-    # df_reg, df_cls = predict(pitcher_ids=pitcher_id, batter_ids=batter_id)
-    # print(df_reg.head())
+    pitcher_id = [1000066910.0]
+    batter_id = [1000032366.0]
+    df_reg, df_cls = predict(pitcher_ids=pitcher_id, batter_ids=batter_id)
+    print(df_reg.head())
     # df_cls.to_csv("pitchertobatter.csvf")

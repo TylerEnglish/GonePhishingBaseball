@@ -126,6 +126,10 @@ def compute_more_advanced_features(df):
 
     return final_df
 
+def add_pitch_num_std(df):
+    df['pitch_num_std'] = df.groupby('PitcherId')['pitch_num'].transform('std')
+    return df
+
 # ======================================
 # Main Pipe
 # ====================================
