@@ -1,3 +1,7 @@
 streamlit
 pandas
 pyarrow
+pytorch-tabnet
+numpy
+torch
+scikit-learn
