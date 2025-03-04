@@ -5,24 +5,24 @@ import numpy as np
 from Scripts.ML_Pipe.Base_Models.base_director import predict
 
 st.set_page_config(
-    page_title="Pioneer League Metrics Group",
+    page_title="Pioneer League Machine Learning Group",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 colors = [
-            "#5F7082",  # Muted denim blue
-            "#4C8C65",  # Muted grass green
-            "#B4976B",  # Soft tan (field dirt)
-            "#7A5D42",  # Earthy brown (infield)
-            "#5A7D8B",  # Muted stadium blue
-            "#A35742",  # Duller red (team color)
-            "#704B38",  # Leather brown (glove or ball)
-            "#6B7C4B",  # Olive green (dugouts)
-            "#D1B692",  # Light sandy beige (base dirt)
-            "#8E7F5C",  # Muted golden brown (worn equipment)
-            "#9C5D4F"   # Muted brick red (stadium walls)
-        ]
+    "#5F7082",  # Muted denim blue
+    "#4C8C65",  # Muted grass green
+    "#B4976B",  # Soft tan (field dirt)
+    "#7A5D42",  # Earthy brown (infield)
+    "#5A7D8B",  # Muted stadium blue
+    "#A35742",  # Duller red (team color)
+    "#704B38",  # Leather brown (glove or ball)
+    "#6B7C4B",  # Olive green (dugouts)
+    "#D1B692",  # Light sandy beige (base dirt)
+    "#8E7F5C",  # Muted golden brown (worn equipment)
+    "#9C5D4F",  # Muted brick red (stadium walls)
+]
 
 # Sidebar Navigation
 st.sidebar.header("Filters")
@@ -37,31 +37,31 @@ years = list(data["year"].unique()) + ["All Years"]
 selected_year = st.sidebar.selectbox(
     "Select a Year",
     options=years,
-    index=list(years).index("All Years"), 
+    index=list(years).index("All Years"),
 )
 
 if selected_year != "All Years":
     data = data[data["year"] == selected_year]
 
 team_names = {
-    'GRE_VOY': 'Great Falls Voyagers',
-    'BIL_MUS': 'Billings Mustangs',
-    'GLA_RAN': 'Grand Junction Rockies',
-    'BOI_HAW': 'Boise Hawks',
-    'MIS_PAD': 'Missoula PaddleHeads',
-    'OGD_RAP': 'Ogden Raptors',
-    'NOR_COL1': 'Northern Colorado Owls',
-    'IDA_CHU': 'Idaho Falls Chukars',
-    'OAK_BAL': 'Oakland Ballers',
-    'GLA_RAN1': 'Grand Junction Rockies',
-    'YOL_HIG': 'Yolo High Wheelers',
-    'ROC_VIB': 'Rocky Mountain Vibes',
-    'GRA_ROC': 'Grand Rapids Rockies'
+    "GRE_VOY": "Great Falls Voyagers",
+    "BIL_MUS": "Billings Mustangs",
+    "GLA_RAN": "Grand Junction Rockies",
+    "BOI_HAW": "Boise Hawks",
+    "MIS_PAD": "Missoula PaddleHeads",
+    "OGD_RAP": "Ogden Raptors",
+    "NOR_COL1": "Northern Colorado Owls",
+    "IDA_CHU": "Idaho Falls Chukars",
+    "OAK_BAL": "Oakland Ballers",
+    "GLA_RAN1": "Grand Junction Rockies",
+    "YOL_HIG": "Yolo High Wheelers",
+    "ROC_VIB": "Rocky Mountain Vibes",
+    "GRA_ROC": "Grand Rapids Rockies",
 }
 
 data["TeamName"] = data["PitcherTeam"].map(team_names)
 excluded_pitches = ["Knuckleball", "OneSeamFastBall", "Sweeper", "Other", "None"]
-data = data.loc[~data["CleanPitchType"].isin(excluded_pitches), ]
+data = data.loc[~data["CleanPitchType"].isin(excluded_pitches),]
 
 pitcher_team = list(data["TeamName"].unique()) + ["All Teams"]
 pitcher_team.sort()
@@ -74,45 +74,82 @@ selected_pitcher_team = st.sidebar.selectbox(
 
 if selected_pitcher_team != "All Teams":
     data = data[data["TeamName"] == selected_pitcher_team]
-    home, ml, outs, runs, outs_by, appendix = st.tabs(
-        ["Home", "Machine Learning", "Out Analytics", "Run Analytics", "Outs By Player", "Appendix"]
-    )
-else:
-    home, ml, outs, runs, outs_by, appendix = st.tabs(
-        ["Home", "Machine Learning", "Out Analytics", "Run Analytics", "Outs By Team", "Appendix"]
-    )
+
+home, ml, outs, runs, outs_by, appendix, future = st.tabs(
+    [
+        "Home",
+        "Machine Learning",
+        "Out Analytics",
+        "Run Analytics",
+        "Strikes and Outs",
+        "Appendix",
+        "Hackathon Journey",
+    ]
+)
 
 with home:
-    st.header("Pioneer Baseballs League Metrics Group Analysis")
+    st.header("Pioneer Baseball League: Optimized Pitching Sequence Model")
     st.write(
-        "Welcome to the Pioneer League Metrics Group interactive dashboard! Our mission is to leverage data visualization, machine learning models,\
-        and statistical analysis to help teams within the Pioneer Baseball League (PBL) make informed, data-driven decisions. Our analysis focuses on \
-        key baseball metrics to provide insights into player performance, team strategies, and game outcomes."
+        "Welcome to the Pioneer League Machine Learning Group interactive dashboard! Our mission is to leverage data for machine learning models\
+        and statistical analysis to help teams within the Pioneer Baseball League (PBL) make informed, data-driven decisions. Our project focuses on\
+        using pitcher and batter data to create an optimized pitching sequence that predicts, for a given pitcher and batter, how many pitches it would take to get an out as well as\
+        the types of pitches to use."
     )
     st.markdown("### Why This Matters")
     st.markdown(
         "Data-driven approaches are transforming baseball. From sabermetrics to real-time game insights, teams that embrace analytics gain a competitive edge.\
-                By applying machine learning models and statistical techniques, we can help optimize performance, enhance scouting, and refine in-game decision-making."
+        By applying our nested machine learning model, we can help optimize performance for pitchers so that their team can get back in the batter's box and scoring runs."
     )
-    st.markdown("### Key Features:")
-    st.markdown("- **Pitching Statistics**: Pitching and outs statics on the games")
-    st.markdown("- **Team Performance**: Compare teams based on various metrics.")
-    st.markdown(
-        "- **Strikeout Improvement**: Use machine learning to predict optimal pitches that should be thrown to get a player out."
-    )
-    st.markdown(
-        "- **Machine Learning**: For Strikeout Optimization Predicting the most effective pitches to retire batters."
-    )
-    st.markdown(
-        "- **Run Scoring Trends**: Identifying factors that influence offensive production."
-    )
-
+    st.markdown("### Machine Learning: Models and Validation Metrics")
+    st.markdown("""
+                * Models that we used include: **XGBoost**, **TabNet**, and **PyCaret**
+                    * We originally planned on using TabNet for both the regression and categorization of our nested model;\
+                      however that was not the case. We ended up running PyCaret to see which model best fit our data and chose XGBoost for the regression model.
+                * For the classification model with TabNet we used **accuracy**, **F1**, and **precision**.
+                    * We decided to use accuracy as a typical metric, along with F1 as a good metric for balance between precision and recall,\
+                      and precision, specifically, since we are being most cautious with false positives for this model since we don't want to\
+                      expect to have an out or strike and get a ball in play or worse a homerun. 
+                """)
 
 with ml:
     # File uploader
     st.title("Machine Learning")
+    col1, col2 = st.columns(2)
 
-    uploaded_file = st.file_uploader("Upload a CSV or Excel file", type=["csv", "xlsx","parquet"])
+    with col1:
+        st.markdown(
+            """
+            <div style="text-align: left; margin-right: 25%;">
+                <h4>Starting Metrics</h4>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        prev_score = pd.DataFrame(
+            [[0.644389, 0.494324, 0.524348]], columns=["Accuracy", "F1", "Precision"]
+        )
+        st.markdown(
+            prev_score.style.hide(axis="index").to_html(), unsafe_allow_html=True
+        )
+    with col2:
+        st.markdown(
+            """
+            <div style="text-align: left; margin-right: 25%;">
+                <h4>Best Metrics Achieved</h4>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        score = pd.read_csv("Derived_Data/model_pred/scores.csv")
+        score["accuracy"] = score["accuracy"]
+        score["f1"] = score["f1"]
+        score["precision"] = score["precision"]
+        score.columns = ["Accuracy", "F1", "Precision"]
+        st.markdown(score.style.hide(axis="index").to_html(), unsafe_allow_html=True)
+
+    uploaded_file = st.file_uploader(
+        "Upload a CSV or Excel file", type=["csv", "xlsx", "parquet"]
+    )
     if uploaded_file is not None:
         # Check file type and load accordingly
         if uploaded_file.name.endswith(".csv"):
@@ -125,11 +162,11 @@ with ml:
         unique_pitchers = list(df["PitcherId"].unique())
         unique_batters = list(df["BatterId"].unique())
 
-        pitcher_id = [1000066910.0,1000060505.0,701628.0,815136.0,1000056876.0]
-        batter_id = [1000032366.0, 1000274194.0,1000035496.0,1000056633.0,683106.0]
+        pitcher_id = [1000066910.0, 1000060505.0, 701628.0, 815136.0, 1000056876.0]
+        batter_id = [1000032366.0, 1000274194.0, 1000035496.0, 1000056633.0, 683106.0]
 
         predictions = predict(pitcher_id[0], batter_id[0])
-        
+
         cls_pred = f"Derived_Data/model_pred/cls_prediction_report_{int(pitcher_id[0])}_{int(batter_id[0])}.csv"
         reg_pred = f"Derived_Data/model_pred/reg_prediction_report_{int(pitcher_id[0])}_{int(batter_id[0])}.csv"
 
@@ -142,69 +179,102 @@ with ml:
 
 with outs:
     st.title("Out Analytics")
-    
+
     # Count the number of occurrences of each pitch type
     pitch_counts = data["CleanPitchType"].value_counts().reset_index()
     pitch_counts.columns = ["CleanPitchType", "Count"]
 
-    pitch_counts = pitch_counts.sort_values('Count', ascending=False)
+    pitch_counts = pitch_counts.sort_values("Count", ascending=False)
 
-    pitch_types = pitch_counts['CleanPitchType'].unique()
+    pitch_types = pitch_counts["CleanPitchType"].unique()
 
     with st.container(border=True):
         col1, col2, col3 = st.columns(3)
         with st.container(border=True):
             with col3:
-                top_pitches = st.number_input("Top N Pitch Counts", min_value=3, max_value = len(pitch_types), value=5, step=1, format="%d")
+                top_pitches = st.number_input(
+                    "Top N Pitch Counts",
+                    min_value=3,
+                    max_value=len(pitch_types),
+                    value=5,
+                    step=1,
+                    format="%d",
+                )
 
         top_n_pitches = pitch_types[:top_pitches]
         pitch_counts = pitch_counts[pitch_counts["CleanPitchType"].isin(top_n_pitches)]
 
         # Create a bar chart
-        fig = px.bar(pitch_counts, x="CleanPitchType", y="Count",
-                    labels={"CleanPitchType": "Pitch Type", "Count": "Number of Throws"},
-                    color="CleanPitchType",
-                    color_discrete_sequence=colors)
+        fig = px.bar(
+            pitch_counts,
+            x="CleanPitchType",
+            y="Count",
+            labels={"CleanPitchType": "Pitch Type", "Count": "Number of Throws"},
+            color="CleanPitchType",
+            color_discrete_sequence=colors,
+        )
         fig.update_layout(showlegend=False)
         # Show the plot
         st.markdown(f"## **Count of Pitch Types for {selected_pitcher_team}**")
         st.plotly_chart(fig)
 
-    
     with st.container(border=True):
         total_pitches = data["CleanPitchType"].value_counts().reset_index()
         total_pitches.columns = ["CleanPitchType", "TotalPitches"]
         # Count pitches that resulted in a strike (called or swinging)
-        strike_pitches = data[data["PitchCall"].isin(["StrikeCalled", "StrikeSwinging"])]
+        strike_pitches = data[data["CleanPitchCall"].isin(["Strike"])]
         strike_counts = strike_pitches["CleanPitchType"].value_counts().reset_index()
         strike_counts.columns = ["CleanPitchType", "StrikePitches"]
         # Merge both counts
-        pitch_strike_rates = total_pitches.merge(strike_counts, on="CleanPitchType", how="left").fillna(0)
+        pitch_strike_rates = total_pitches.merge(
+            strike_counts, on="CleanPitchType", how="left"
+        ).fillna(0)
         # Calculate the percentage of throws that resulted in a strike
-        pitch_strike_rates["StrikePercentage"] = (pitch_strike_rates["StrikePitches"] / pitch_strike_rates["TotalPitches"])
+        pitch_strike_rates["StrikePercentage"] = (
+            pitch_strike_rates["StrikePitches"] / pitch_strike_rates["TotalPitches"]
+        )
 
+        pitch_strike_rates = pitch_strike_rates.sort_values(
+            "StrikePercentage", ascending=False
+        )
 
-        pitch_strike_rates = pitch_strike_rates.sort_values('StrikePercentage', ascending=False)
-
-        pitch_types = pitch_strike_rates['CleanPitchType'].unique()
+        pitch_types = pitch_strike_rates["CleanPitchType"].unique()
         col1, col2, col3 = st.columns(3)
         with st.container(border=True):
             with col3:
-                top_pitches = st.number_input("Top N Pitches Strikes", min_value=3, max_value = len(pitch_types), value=5, step=1, format="%d")
+                top_pitches = st.number_input(
+                    "Top N Pitches Strikes",
+                    min_value=3,
+                    max_value=len(pitch_types),
+                    value=5,
+                    step=1,
+                    format="%d",
+                )
 
         top_n_pitches = pitch_types[:top_pitches]
-        pitch_strike_rates = pitch_strike_rates[pitch_strike_rates["CleanPitchType"].isin(top_n_pitches)]
+        pitch_strike_rates = pitch_strike_rates[
+            pitch_strike_rates["CleanPitchType"].isin(top_n_pitches)
+        ]
 
         # Bar chart of percentage of throws resulting in strike
-        fig = px.bar(pitch_strike_rates, x="CleanPitchType", y="StrikePercentage",
-                    labels={"CleanPitchType": "Pitch Type", "StrikePercentage": "Strike Percentage"},
-                    color="CleanPitchType",
-                    color_discrete_sequence=colors)
+        fig = px.bar(
+            pitch_strike_rates,
+            x="CleanPitchType",
+            y="StrikePercentage",
+            labels={
+                "CleanPitchType": "Pitch Type",
+                "StrikePercentage": "Strike Percentage",
+            },
+            color="CleanPitchType",
+            color_discrete_sequence=colors,
+        )
         # Remove legend
         fig.update_layout(showlegend=False)
         fig.update_yaxes(tickformat=".0%")
         # Show the plot
-        st.markdown(f"## **Percentage of Throws Resulting in Strike for {selected_pitcher_team}**")
+        st.markdown(
+            f"## **Percentage of Throws Resulting in Strike for {selected_pitcher_team}**"
+        )
         st.plotly_chart(fig)
 
 with runs:
@@ -241,17 +311,26 @@ with runs:
 
     with st.container(border=True):
         runs_per_pitch = (
-            data_clean.loc[data_clean["RunsScored"] != 0].groupby(["LastPitch"])
-                                 .agg(count = ("RunsScored", "sum")).reset_index()
+            data_clean.loc[data_clean["RunsScored"] != 0]
+            .groupby(["LastPitch"])
+            .agg(count=("RunsScored", "sum"))
+            .reset_index()
         )
 
-        runs_per_pitch = runs_per_pitch.sort_values('count')
+        runs_per_pitch = runs_per_pitch.sort_values("count")
 
-        pitch_types = runs_per_pitch['LastPitch'].unique()
+        pitch_types = runs_per_pitch["LastPitch"].unique()
         col1, col2, col3 = st.columns(3)
         with st.container(border=True):
             with col3:
-                top_pitches = st.number_input("Bottom N Pitches for Runs Scored", min_value=3, max_value=len(pitch_types), value=5, step=1, format="%d")
+                top_pitches = st.number_input(
+                    "Bottom N Pitches for Runs Scored",
+                    min_value=3,
+                    max_value=len(pitch_types),
+                    value=5,
+                    step=1,
+                    format="%d",
+                )
 
         top_n_pitches = pitch_types[:top_pitches]
         runs_per_pitch = runs_per_pitch[runs_per_pitch["LastPitch"].isin(top_n_pitches)]
@@ -278,44 +357,76 @@ with runs:
         # Show the plot in Streamlit
         st.markdown(f"## **Runs by Pitch Type for {selected_pitcher_team}**")
         st.plotly_chart(fig)  # Display Plotly chart in Streamlit
-    
+
     with st.container(border=True):
         # Last pitch with Play Result
         two_results = data_explode
-        two_results =  two_results[two_results["BatterResult"].isin(["Single", "Double", "Triple", "HomeRun", "Walk", "Sacrifice", "Out", "Strikeout"])]
+        two_results = two_results[
+            two_results["BatterResult"].isin(
+                [
+                    "Single",
+                    "Double",
+                    "Triple",
+                    "HomeRun",
+                    "Walk",
+                    "Sacrifice",
+                    "Out",
+                    "Strikeout",
+                ]
+            )
+        ]
 
-        two_results["BatterResult"] = np.where(two_results["BatterResult"].isin(["Out", "Strikeout"]), "Out", "On Base")
+        two_results["BatterResult"] = np.where(
+            two_results["BatterResult"].isin(["Out", "Strikeout"]), "Out", "On Base"
+        )
 
         last_pitch_result = (
             two_results.groupby(["CleanPitchType", "BatterResult"])
-            .agg(count = ("RunsScored", "count"))
+            .agg(count=("RunsScored", "count"))
             .reset_index()
         )
 
         # bottom_pitches
-        on_base = last_pitch_result[~last_pitch_result["BatterResult"].isin(["Out", "Strikeout"])]
-        on_base = on_base.sort_values('count')
+        on_base = last_pitch_result[
+            ~last_pitch_result["BatterResult"].isin(["Out", "Strikeout"])
+        ]
+        on_base = on_base.sort_values("count")
 
-        pitch_types = on_base['CleanPitchType'].unique()
+        pitch_types = on_base["CleanPitchType"].unique()
 
         col1, col2, col3 = st.columns(3)
         with st.container(border=True):
             with col3:
-                top_pitches = st.number_input("Bottom N Pitches for On Base", min_value=3, max_value=len(pitch_types), value=5, step=1, format="%d")
+                top_pitches = st.number_input(
+                    "Bottom N Pitches for On Base",
+                    min_value=3,
+                    max_value=len(pitch_types),
+                    value=5,
+                    step=1,
+                    format="%d",
+                )
 
         top_n_pitches = pitch_types[:top_pitches]
-        last_pitch_result = last_pitch_result[last_pitch_result["CleanPitchType"].isin(top_n_pitches)]
-        sorted_result = pd.concat([
-            last_pitch_result[~last_pitch_result['BatterResult'].isin(["Out", "Strikeout"])].sort_values(by='count', ascending=True),
-            last_pitch_result[last_pitch_result['BatterResult'].isin(["Out", "Strikeout"])]
-        ])
+        last_pitch_result = last_pitch_result[
+            last_pitch_result["CleanPitchType"].isin(top_n_pitches)
+        ]
+        sorted_result = pd.concat(
+            [
+                last_pitch_result[
+                    ~last_pitch_result["BatterResult"].isin(["Out", "Strikeout"])
+                ].sort_values(by="count", ascending=True),
+                last_pitch_result[
+                    last_pitch_result["BatterResult"].isin(["Out", "Strikeout"])
+                ],
+            ]
+        )
         # Create a Plotly bar plot
         fig = px.bar(
             sorted_result,
             x="CleanPitchType",
             y="count",
             color="BatterResult",
-            barmode='group',
+            barmode="group",
             color_discrete_sequence=colors,
             labels={"CleanPitchType": "Pitch Type", "count": "Result of At Bat Count"},
         )
@@ -330,7 +441,6 @@ with runs:
         st.plotly_chart(fig)  # Display Plotly chart in Streamlit
 
 
-
 with outs_by:
     # Select the appropriate 'mean_type' based on the selected pitcher team
     mean_type = ""
@@ -339,7 +449,9 @@ with outs_by:
     else:
         mean_type = "PitcherId"
 
-    st.markdown(f"### **Distributions of Strikes for {selected_pitcher_team} by {mean_type}**")
+    st.markdown(
+        f"### **Distributions of Strikes for {selected_pitcher_team} by {mean_type}**"
+    )
 
     # Aggregate data to get relevant columns
     data_clean = (
@@ -348,7 +460,7 @@ with outs_by:
             {
                 "KorBB": lambda x: list(x),
                 "PlayResult": lambda x: list(x),
-                "PitchCall": lambda x: list(x)
+                "CleanPitchCall": lambda x: list(x),
             }
         )
         .reset_index()
@@ -367,24 +479,28 @@ with outs_by:
 
     data_clean[mean_type] = data_clean[mean_type].astype(dtype=str)
 
-    # Exploding 'PitchCall' column to have individual rows for each pitch call
-    data_explode = data_clean.explode("PitchCall")
-    data_explode = data_explode[data_explode["PitchCall"].isin(["StrikeCalled", "StrikeSwinging"])]
+    # Exploding 'CleanPitchCall' column to have individual rows for each pitch call
+    data_explode = data_clean.explode("CleanPitchCall")
+    data_explode = data_explode[data_explode["CleanPitchCall"].isin(["Strike"])]
 
     # Create exploded DataFrame for the "Out" or "Strikeout" categories
     data_explode2 = (
         data_explode[
-            (data_explode["PitchCall"].isin(["StrikeCalled", "StrikeSwinging"]))
+            (data_explode["CleanPitchCall"].isin(["Strike"]))
             & (data_explode["BatterResult"].isin(["Out", "Strikeout"]))
         ]
         .groupby([mean_type, "GameID"])
-        .agg(count=("PitchCall", "count"))
+        .agg(count=("CleanPitchCall", "count"))
         .reset_index()
     )
     data_explode2["Only Caused Outs"] = "True"
 
     # Data cleaning for the second part (non-out) pitches
-    data_explode = data_explode.groupby([mean_type, "GameID"]).agg(count=("PitchCall", "count")).reset_index()
+    data_explode = (
+        data_explode.groupby([mean_type, "GameID"])
+        .agg(count=("CleanPitchCall", "count"))
+        .reset_index()
+    )
     data_explode["Only Caused Outs"] = "False"
     data_explode = pd.concat([data_explode, data_explode2])
 
@@ -413,7 +529,7 @@ with outs_by:
         points="all",  # Show all points
         facet_col=mean_type,  # Facet by the mean_type (e.g., pitcher or team)
         facet_col_wrap=3,
-        color_discrete_sequence=colors
+        color_discrete_sequence=colors,
     )
 
     # Customize layout to improve the appearance
@@ -421,11 +537,11 @@ with outs_by:
         xaxis_title="",
         yaxis_title="Only Caused Outs",
         legend=dict(
-            traceorder='reversed'  # This reverses the legend order
+            traceorder="reversed"  # This reverses the legend order
         ),
         yaxis=dict(
-            range=[-.5, .33]  # Set the y-axis limits
-        )
+            range=[-0.5, 0.33]  # Set the y-axis limits
+        ),
     )
 
     fig.update_xaxes(title_text="Count of Strikes Per Game", row=1, col=2)
@@ -436,8 +552,8 @@ with outs_by:
         fig.update_yaxes(title_text="Only Caused Outs", row=2, col=1)
 
     fig.for_each_annotation(
-            lambda a: a.update(text=a.text.split("=")[-1], font=dict(color="black"))
-        )
+        lambda a: a.update(text=a.text.split("=")[-1], font=dict(color="black"))
+    )
 
     # Display the plot in Streamlit
     st.plotly_chart(fig)
@@ -446,7 +562,9 @@ with outs_by:
 with appendix:
     st.title("Appendix")
 
-    data_dictionary, test_cases, validity_of_data = st.tabs(["Data Dictionary", "Test Cases", "Validity of Data"])
+    data_dictionary, test_cases, validity_of_data = st.tabs(
+        ["Data Dictionary", "Test Cases", "Validity of Data"]
+    )
     with data_dictionary:
         # Start HTML table
         data_dict_html = """
@@ -476,10 +594,13 @@ with appendix:
             ("Outs", "Number of outs before the pitch."),
             ("Balls", "Count of balls before the pitch."),
             ("Strikes", "Count of strikes before the pitch."),
-            ("PitchCall", "Outcome of the pitch (Ball, Strike, etc.)."),
+            ("CleanPitchCall", "Outcome of the pitch (Ball, Strike, etc.)."),
             ("KorBB", "Strikeout (K) or walk (BB)."),
             ("CleanPitchType", "Categorized pitch type (e.g., Fastball, Slider)."),
-            ("TaggedHitType", "Manually reviewed hit type (e.g., Line Drive, Fly Ball)."),
+            (
+                "TaggedHitType",
+                "Manually reviewed hit type (e.g., Line Drive, Fly Ball).",
+            ),
             ("PlayResult", "Result of the play (Single, Out, etc.)."),
             ("OutsOnPlay", "Number of outs recorded on the play."),
             ("RunsScored", "Number of runs scored on the play."),
@@ -529,12 +650,21 @@ with appendix:
             ("MaxHeight", "Maximum height of pitch (feet)."),
             ("MeasuredDuration", "Duration from pitch release to plate (seconds)."),
             ("SpeedDrop", "Speed reduction from release to plate (MPH)."),
-            ("AutoHitType", "System-classified hit type (e.g., Ground Ball, Fly Ball)."),
+            (
+                "AutoHitType",
+                "System-classified hit type (e.g., Ground Ball, Fly Ball).",
+            ),
             ("PitcherTeam", "Team the pitcher is playing for."),
             ("HitSpinAxis", "Spin axis of ball after contact (degrees)."),
             ("Avg_Pitch_Speed", "Average pitch speed for the pitcher."),
-            ("Avg_Vertical_Release_Angle", "Average vertical release angle for the pitcher."),
-            ("Avg_Horizontal_Release_Angle", "Average horizontal release angle for the pitcher."),
+            (
+                "Avg_Vertical_Release_Angle",
+                "Average vertical release angle for the pitcher.",
+            ),
+            (
+                "Avg_Horizontal_Release_Angle",
+                "Average horizontal release angle for the pitcher.",
+            ),
             ("Avg_Spin_Rate", "Average spin rate for the pitcher."),
             ("Avg_Spin_Axis", "Average spin axis for the pitcher."),
             ("Strike_Percentage", "Percentage of pitches that were strikes."),
@@ -542,21 +672,47 @@ with appendix:
             ("Outs_Created", "Total outs created by the pitcher."),
             ("Avg_PlateLocHeight", "Average pitch height at the plate."),
             ("Avg_PlateLocSide", "Average pitch lateral location at the plate."),
-            ("Pitch_Type_Diversity", "Measure of how many different pitch types a pitcher uses."),
+            (
+                "Pitch_Type_Diversity",
+                "Measure of how many different pitch types a pitcher uses.",
+            ),
             ("Max_Effective_Velocity", "Maximum effective velocity recorded."),
-            ("Avg_Velocity_Drop", "Average drop in velocity from release to home plate."),
-            ("Breaking_Ball_Ratio", "Ratio of breaking balls thrown compared to other pitches."),
-            ("Pitch_Sequencing_Entropy", "Entropy measure of pitch sequencing strategy."),
-            ("Pitch_Zonal_Targeting", "Strategy-based measure of pitch placement in the zone."),
-            ("Fastball_to_Offspeed_Ratio", "Ratio of fastballs to offspeed pitches thrown."),
-            ("Vertical_vs_Horizontal_Break_Ratio", "Ratio comparing vertical to horizontal pitch break."),
-            ("Release_Extension_Deviation", "Deviation in release extension consistency."),
+            (
+                "Avg_Velocity_Drop",
+                "Average drop in velocity from release to home plate.",
+            ),
+            (
+                "Breaking_Ball_Ratio",
+                "Ratio of breaking balls thrown compared to other pitches.",
+            ),
+            (
+                "Pitch_Sequencing_Entropy",
+                "Entropy measure of pitch sequencing strategy.",
+            ),
+            (
+                "Pitch_Zonal_Targeting",
+                "Strategy-based measure of pitch placement in the zone.",
+            ),
+            (
+                "Fastball_to_Offspeed_Ratio",
+                "Ratio of fastballs to offspeed pitches thrown.",
+            ),
+            (
+                "Vertical_vs_Horizontal_Break_Ratio",
+                "Ratio comparing vertical to horizontal pitch break.",
+            ),
+            (
+                "Release_Extension_Deviation",
+                "Deviation in release extension consistency.",
+            ),
             ("Avg_Hit_Exit_Velocity", "Average exit velocity of batted balls."),
         ]
 
         # Append rows to the HTML table
         for column_name, description in data_dict:
-            data_dict_html += f"<tr><td><b>{column_name}</b></td><td>{description}</td></tr>"
+            data_dict_html += (
+                f"<tr><td><b>{column_name}</b></td><td>{description}</td></tr>"
+            )
 
         # Close table
         data_dict_html += "</tbody></table>"
@@ -574,6 +730,220 @@ with appendix:
 
         st.markdown(md_content, unsafe_allow_html=True)
 
-    
     with validity_of_data:
-        print("hello")
+        df_valitity = data
+
+        outs_df = df_valitity[df_valitity["OutsOnPlay"] > 0]
+
+        # Define the pitch types to remove
+        excluded_pitches = ["Knuckleball", "OneSeamFastBall", "Sweeper", "Other"]
+
+        # Filter out these pitch types
+        df_valitity = df_valitity[~df_valitity["CleanPitchType"].isin(excluded_pitches)]
+
+        # Count total throws per pitch type
+        total_pitches = df_valitity["CleanPitchType"].value_counts().reset_index()
+        total_pitches.columns = ["CleanPitchType", "TotalPitches"]
+
+        # Count pitches that resulted in a strike (called or swinging)
+        strike_pitches = df_valitity[
+            df_valitity["CleanPitchCall"].isin(["StrikeCalled", "StrikeSwinging"])
+        ]
+        strike_counts = strike_pitches["CleanPitchType"].value_counts().reset_index()
+        strike_counts.columns = ["CleanPitchType", "StrikePitches"]
+
+        # Merge both counts
+        pitch_strike_rates = total_pitches.merge(
+            strike_counts, on="CleanPitchType", how="left"
+        ).fillna(0)
+
+        # Calculate the percentage of throws that resulted in a strike
+        pitch_strike_rates["StrikePercentage"] = (
+            pitch_strike_rates["StrikePitches"] / pitch_strike_rates["TotalPitches"]
+        ) * 100
+
+        # Heatmap graph showing pitch location for outs
+        fig = px.density_heatmap(
+            outs_df,
+            x="PlateLocSide",
+            y="PlateLocHeight",
+            title="Pitch Location for Outs",
+            labels={
+                "PlateLocSide": "Horizontal Location",
+                "PlateLocHeight": "Vertical Location",
+            },
+            nbinsx=30,
+            nbinsy=30,
+        )
+
+        st.plotly_chart(fig)
+
+        # Scatter plot showing pitch speed and exit velocity
+        hits_df = df_valitity[
+            df_valitity["PlayResult"].isin(["Single", "Double", "Triple", "HomeRun"])
+        ]
+
+        fig = px.scatter(
+            hits_df,
+            x="RelSpeed",
+            y="ExitSpeed",
+            color="CleanPitchType",
+            title="Pitch Speed vs. Exit Velocity",
+            labels={
+                "RelSpeed": "Pitch Speed (MPH)",
+                "ExitSpeed": "Exit Velocity (MPH)",
+            },
+        )
+
+        st.plotly_chart(fig)
+
+        # Filter for hit plays
+        # Create a box plot instead of a scatter plot
+        fig = px.box(
+            hits_df,
+            x="CleanPitchType",
+            y="ExitSpeed",
+            color="CleanPitchType",
+            title="Exit Velocity by Pitch Type",
+            labels={"CleanPitchType": "Pitch Type", "ExitSpeed": "Exit Velocity (MPH)"},
+        )
+
+        st.plotly_chart(fig)
+
+        runs_scored = df_valitity.groupby("Date")["RunsScored"].sum().reset_index()
+        fig = px.line(
+            runs_scored,
+            x="Date",
+            y="RunsScored",
+            title="Runs Scored Over Time",
+            labels={"RunsScored": "Total Runs", "Date": "Game Date"},
+        )
+        st.plotly_chart(fig)
+
+        col1, col2 = st.columns(2)
+
+        fig = px.box(
+            df_valitity,
+            y="RelHeight",
+            title="Pitch Release Height Distribution",
+            labels={"RelHeight": "Release Height (feet)"},
+            color_discrete_sequence=["#5F7082"],
+        )
+
+        with col1:
+            st.plotly_chart(fig)
+
+        pitches_per_inning = (
+            df_valitity.groupby(["GameID", "Inning"]).size().reset_index(name="Pitches")
+        )
+
+        fig = px.box(
+            pitches_per_inning,
+            y="Pitches",
+            title="Pitches Per Inning Distribution",
+            labels={"Pitches": "Pitches Per Inning"},
+            color_discrete_sequence=["#B4976B"],
+        )
+        with col2:
+            st.plotly_chart(fig)
+
+        with future:
+            st.title("Hackathon Journey")
+
+            st.markdown("### Background")
+            st.markdown("- Data from Pioneer Baseball League")
+            st.markdown(
+                "- We were asked to make a Machine Learning Model to predict the best pitching sequence to strike out an opposing batter"
+            )
+
+            st.markdown("### Summary of Machine Learning")
+            st.markdown(
+                "- **Data Cleaning**: Cleaned the data by merging columns, resolving Nulls, filtering out data, and fixing data types"
+            )
+
+            st.markdown("- **Feature Engineering**:")
+            st.markdown("    - **Basic Feature Engineering**:")
+            st.markdown(
+                "        - Grouping: Data is grouped by Date, PitchNo, PitcherId, and BatterId."
+            )
+            st.markdown("        - **Key Metrics:**")
+            st.markdown("            - Avg_Pitch_Speed: Mean release speed (RelSpeed).")
+            st.markdown(
+                "            - Release Angles & Spin: Average vertical (VertRelAngle) and horizontal (HorzRelAngle) release angles, spin rate, and spin axis."
+            )
+            st.markdown(
+                "            - Count-Based Rates: Strike and ball percentages from PitchCall."
+            )
+            st.markdown(
+                "            - Outcome Metrics: Total Outs Created and average plate location (PlateLocHeight/PlateLocSide)."
+            )
+            st.markdown(
+                "        - **Purpose:** Provides foundational insights into pitch quality and release mechanics on a per-plate appearance basis."
+            )
+
+            st.markdown("    - **Advanced Feature Engineering**:")
+            st.markdown("        - Aggregation of Pitch Sequencing:")
+            st.markdown(
+                "            - Pitch_Type_Diversity & Sequencing Entropy: Measures the variety and unpredictability of pitch types using Shannon entropy."
+            )
+            st.markdown(
+                "            - Movement Ratios: Vertical vs. Horizontal break ratios and Pitch Zonal Targeting based on PlateLocHeight."
+            )
+            st.markdown(
+                "            - Velocity Metrics: Maximum Effective Velocity and Avg_Velocity_Drop."
+            )
+            st.markdown(
+                "            - Pitch Mix Ratios: Breaking Ball Ratio and Fastball-to-Offspeed Ratio."
+            )
+            st.markdown(
+                "            - Release Consistency: Deviation in release extension, reflecting mechanical consistency."
+            )
+            st.markdown(
+                "            - Avg_Hit_Exit_Velocity: Average exit speed of batted balls."
+            )
+            st.markdown(
+                "        - **Purpose:** Captures deeper strategic elements and pitch movement profiles that influence batter performance."
+            )
+
+            st.markdown("    - **More Advanced Feature Engineering**:")
+            st.markdown("        - Enhanced Metrics with Smoothing:")
+            st.markdown(
+                "            - Combining pitch-level, matchup-level, and batter-level data with Laplace smoothing (alpha=1, beta=2) to ensure robustness:"
+            )
+            st.markdown(
+                "            - Pitch-Level: Includes Pitch_Type_Variance, Speed_Consistency, Change_in_Speed_Per_Pitch, and Pitcher_Aggressiveness."
+            )
+            st.markdown(
+                "            - Matchup-Level: Computes smoothed Hit_Probability and Strikeout_Likelihood for each pitcher-batter pair."
+            )
+            st.markdown(
+                "            - Batter-Level: Determines Batter_Strikeout_Tendency."
+            )
+            st.markdown(
+                "        - **Purpose:** Integrates individual pitch details with overall matchup trends to create a comprehensive feature set for predicting optimal pitch sequences."
+            )
+
+            st.markdown(
+                "- **Baseline Models Tested**: TabNetClassifier, PyCaretClassifier, TabNetRegressor, PyCaretRegressor, XGBoost"
+            )
+            st.markdown(
+                "- **Findings**: TabNet performed best for classification, while XGBoost was slightly superior for regression."
+            )
+            st.markdown(
+                "- **Test Case Model**: PyCaretClassifier performed well with basic features but switching to TabNetClassifier yielded even better results."
+            )
+            st.markdown(
+                "  PyCaretRegressor underperformed on base features; TabNetRegressor showed slight improvement, but XGBoost emerged as the best regressor."
+            )
+
+            st.markdown("### Streamlit Implementation")
+            st.markdown("- Built framework and filled in fields about our project")
+            st.markdown(
+                "- Data exploration while creating graphs and looking for outliers."
+            )
+            st.markdown(
+                "- Made charts after data exploration and found good insights into the data."
+            )
+            st.markdown(
+                "- Made ML integration - Allows for file upload and insertion of data"
+            )
