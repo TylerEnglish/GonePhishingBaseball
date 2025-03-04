@@ -1,0 +1,84 @@
+name: Data Pipe Workflow
+
+on:
+  push:
+    paths:
+      - "Scripts/Data_Pipe/**"
+      - "Raw_Data/GameData/**"
+  pull_request:
+    paths:
+      - "Scripts/Data_Pipe/**"
+      - "Raw_Data/GameData/**"
+
+jobs:
+  datapipe:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/*.yaml') }}-dependencies
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          echo "Installing required dependencies..."
+          pip install pandas regex numpy pyarrow scipy
+
+      - name: Determine Changed Paths
+        id: changes
+        uses: dorny/paths-filter@v2
+        with:
+          filters: |
+            data:
+              - 'Raw_Data/GameData/**'
+            clean:
+              - 'Scripts/Data_Pipe/clean.py'
+            filter:
+              - 'Scripts/Data_Pipe/filter.py'
+            feature:
+              - 'Scripts/Data_Pipe/feature.py'
+
+      - name: Set Stage Flag Based on Changes
+        id: stage
+        shell: bash
+        run: |
+          echo "Changed data: ${{ steps.changes.outputs.data }}"
+          echo "Changed clean: ${{ steps.changes.outputs.clean }}"
+          echo "Changed filter: ${{ steps.changes.outputs.filter }}"
+          echo "Changed feature: ${{ steps.changes.outputs.feature }}"
+
+          # Priority is given to raw data changes first.
+          if [[ "${{ steps.changes.outputs.data }}" == "true" ]]; then
+            echo "Raw data has changed. Running full pipeline (all stages)."
+            echo "::set-output name=stage::all"
+          elif [[ "${{ steps.changes.outputs.clean }}" == "true" ]]; then
+            echo "clean.py has changed. Running clean, filter, and feature stages."
+            echo "::set-output name=stage::clean"
+          elif [[ "${{ steps.changes.outputs.filter }}" == "true" ]]; then
+            echo "filter.py has changed. Running filter and feature stages."
+            echo "::set-output name=stage::filter"
+          elif [[ "${{ steps.changes.outputs.feature }}" == "true" ]]; then
+            echo "feature.py has changed. Running only the feature stage."
+            echo "::set-output name=stage::feature"
+          else
+            echo "No specific changes detected. Running full pipeline (all stages) by default."
+            echo "::set-output name=stage::all"
+          fi
+
+      - name: Run Data Director Pipeline
+        working-directory: Scripts/Data_Pipe
+        run: |
+          echo "Running pipeline with stage: ${{ steps.stage.outputs.stage }}"
+          python data_director.py --stage ${{ steps.stage.outputs.stage }}

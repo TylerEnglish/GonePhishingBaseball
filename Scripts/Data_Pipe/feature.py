@@ -2,7 +2,7 @@ import pyarrow.parquet as pq
 import pandas as pd
 import os
 from datetime import datetime
-from scipy.stats import entropy  # Entropy helps measure unpredictability in pitch selection
+from scipy.stats import entropy 
 import numpy as np
 
 def compute_basic_features(df):
