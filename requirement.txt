@@ -9,3 +9,4 @@ regex
 xgboost
 pycaret
 plotly
+torch_optimizer
