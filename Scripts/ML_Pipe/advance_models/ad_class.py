@@ -38,10 +38,10 @@ def compute_class_weights(y_train, device='cpu'):
 
 def advanced_data_cleaning(df, target_col, categorical_cols):
     """
-    Performs robust data cleaning:
+    Clean data as per research context:
       - Median imputation for numeric features
-      - Fills missing categorical values with 'Missing'
-      - Drops any rows with missing target
+      - Fill missing categorical values with 'Missing'
+      - Drop rows with missing target
     """
     df_clean = df.copy(deep=True)
     numeric_cols = df_clean.select_dtypes(include=[np.number]).columns.tolist()
@@ -55,11 +55,8 @@ def advanced_data_cleaning(df, target_col, categorical_cols):
 
 def variance_based_target_encoding(df, col, target_col, smoothing=10):
     """
-    Computes a variance-based (shrinkage) target encoding for a categorical column.
-    For each category, the encoding is computed as:
-        weight = count / (count + smoothing)
-        encoding = weight * (mean outcome for the category) + (1-weight) * (global mean)
-    This preserves the signal while regularizing sparse or high-variance categories.
+    Variance-based (shrinkage) target encoding.
+    Each category is encoded as a blend between its category mean and the global mean.
     """
     global_mean = df[target_col].mean()
     stats = df.groupby(col)[target_col].agg(['mean', 'count'])
@@ -70,7 +67,7 @@ def variance_based_target_encoding(df, col, target_col, smoothing=10):
 def encode_categorical_columns(df, categorical_cols, target_col, encoders=None):
     """
     Applies variance-based target encoding to categorical columns.
-    If encoders are provided (e.g. for new/unseen data), they are reused.
+    If encoders are provided (from training), they are reused for new/unseen data.
     """
     df_encoded = df.copy(deep=True)
     if encoders is None:
@@ -88,8 +85,8 @@ def encode_categorical_columns(df, categorical_cols, target_col, encoders=None):
 
 def mutual_info_feature_selection(X, y, feature_cols, top_k=None):
     """
-    Computes mutual information scores between features and the target.
-    Returns a list of feature names ordered by decreasing MI score.
+    Selects the most informative features using mutual information.
+    Returns feature names ordered by decreasing MI score.
     """
     mi_scores = mutual_info_classif(X, y, random_state=42)
     features = sorted(zip(feature_cols, mi_scores), key=lambda x: x[1], reverse=True)
@@ -99,6 +96,10 @@ def mutual_info_feature_selection(X, y, feature_cols, top_k=None):
         return [f[0] for f in features[:top_k]]
 
 def augment_data_with_noise(X, noise_level=0.01):
+    """
+    Augments continuous data with a small amount of noise.
+    (Note: Our design prefers robust data cleaning over synthetic augmentation.)
+    """
     std_vec = np.std(X, axis=0)
     noise = np.random.randn(*X.shape) * (std_vec * noise_level)
     return X + noise
@@ -151,26 +152,28 @@ class SequenceDataset(Dataset):
         return (self.X[idx], self.y[idx]) if self.y is not None else self.X[idx]
 
 ###############################################################################
-# LABEL-SMOOTHING CROSS-ENTROPY LOSS
+# ENHANCED LABEL-SMOOTHING CROSS-ENTROPY LOSS
 ###############################################################################
-class LabelSmoothingCrossEntropyLoss(nn.Module):
+class EnhancedLabelSmoothingCrossEntropyLoss(nn.Module):
+    """
+    Custom loss that applies label smoothing and class weighting.
+    This loss improves generalization by preventing overconfidence.
+    """
     def __init__(self, smoothing=0.1, weight=None, reduction='mean'):
         super().__init__()
         self.smoothing = smoothing
-        self.weight = weight
+        self.weight = weight  # tensor of shape [num_classes]
         self.reduction = reduction
         self.confidence = 1.0 - smoothing
         self.log_softmax = nn.LogSoftmax(dim=1)
     
     def forward(self, logits, target):
-        log_probs = self.log_softmax(logits)
+        log_probs = self.log_softmax(logits)  # (batch, num_classes)
         nll_loss = -log_probs.gather(dim=1, index=target.unsqueeze(1)).squeeze(1)
         smooth_loss = -log_probs.mean(dim=1)
         loss = self.confidence * nll_loss + self.smoothing * smooth_loss
-        
         if self.weight is not None:
             loss = loss * self.weight[target]
-            
         if self.reduction == 'mean':
             return loss.mean()
         elif self.reduction == 'sum':
@@ -201,7 +204,7 @@ class SEBlock(nn.Module):
 # GATED RESIDUAL NETWORK (GRN) BLOCK
 ###############################################################################
 class GRNBlock(nn.Module):
-    def __init__(self, input_dim, hidden_dim, dropout=0.4):
+    def __init__(self, input_dim, hidden_dim, dropout=0.5):
         super().__init__()
         self.fc1 = nn.Linear(input_dim, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, input_dim)
@@ -224,40 +227,33 @@ class GRNBlock(nn.Module):
 ###############################################################################
 class HybridPitchSelectionModel(nn.Module):
     """
-    Implements a hybrid model combining:
-      - A 1D CNN for spatial (e.g., pitch location) feature extraction
-      - An LSTM for capturing sequential pitch dependencies
-      - An attention mechanism to focus on the most relevant past pitches
-      - A GRN block for adaptive fusion of features
-      - A final fully connected layer for multi-class pitch outcome prediction
+    Hybrid model combining:
+      - 1D CNN for spatial feature extraction (e.g., pitch location grids)
+      - LSTM for sequential dependencies across pitches
+      - Attention mechanism to weight important historical pitches
+      - GRN block for adaptive feature fusion before final prediction
     """
-    def __init__(self, input_dim, cnn_channels=32, lstm_hidden_dim=64, num_classes=5, dropout=0.4):
+    def __init__(self, input_dim, cnn_channels=32, lstm_hidden_dim=64, num_classes=5, dropout=0.5):
         super(HybridPitchSelectionModel, self).__init__()
-        # CNN to extract spatial/locational patterns
         self.cnn = nn.Conv1d(in_channels=input_dim, out_channels=cnn_channels, kernel_size=3, padding=1)
         self.relu = nn.ReLU()
-        # LSTM for sequential modeling (e.g., evolving pitch sequence)
         self.lstm = nn.LSTM(input_size=cnn_channels, hidden_size=lstm_hidden_dim, batch_first=True)
-        # Attention: compute a weight for each time step
         self.attention_fc = nn.Linear(lstm_hidden_dim, 1)
-        # GRN block to fuse and refine the context vector
         self.grn = GRNBlock(lstm_hidden_dim, lstm_hidden_dim, dropout=dropout)
         self.dropout = nn.Dropout(dropout)
-        # Final output layer for multi-class classification
         self.fc_out = nn.Linear(lstm_hidden_dim, num_classes)
     def forward(self, x):
         # x: (batch, seq_len, input_dim)
-        # Apply CNN: transpose to (batch, input_dim, seq_len)
+        # Apply CNN: treat feature dimensions as channels.
         x_cnn = self.cnn(x.transpose(1, 2))
         x_cnn = self.relu(x_cnn)
-        # Transpose back to (batch, seq_len, cnn_channels)
         x_cnn = x_cnn.transpose(1, 2)
-        # Process through LSTM for sequential dependencies
-        lstm_out, _ = self.lstm(x_cnn)  # (batch, seq_len, lstm_hidden_dim)
-        # Compute attention weights and context vector over the sequence
-        attn_weights = torch.softmax(self.attention_fc(lstm_out), dim=1)  # (batch, seq_len, 1)
-        context = torch.sum(attn_weights * lstm_out, dim=1)  # (batch, lstm_hidden_dim)
-        # Fuse with GRN and dropout before final prediction
+        # Process sequential data with LSTM.
+        lstm_out, _ = self.lstm(x_cnn)
+        # Attention mechanism: compute weights over LSTM outputs.
+        attn_weights = torch.softmax(self.attention_fc(lstm_out), dim=1)
+        context = torch.sum(attn_weights * lstm_out, dim=1)
+        # Feature fusion with GRN.
         grn_out = self.grn(context)
         out = self.dropout(grn_out)
         logits = self.fc_out(out)
@@ -270,8 +266,10 @@ class HybridPitchTrainer:
     def __init__(self, input_dim, num_classes=5, cnn_channels=32, lstm_hidden_dim=64,
                  lr=1e-4, batch_size=256, epochs=25, device='cpu',
                  class_weights=None, weight_decay=1e-4, grad_clip=1.0,
-                 warmup_epochs=3, early_stopping_patience=25, dropout=0.4,
-                 use_mixup=True, mixup_alpha=0.2):
+                 warmup_epochs=3, early_stopping_patience=5,
+                 dropout=0.5,
+                 use_mixup=False,
+                 mixup_alpha=0.2):
         self.device = device
         self.batch_size = batch_size
         self.epochs = epochs
@@ -289,7 +287,7 @@ class HybridPitchTrainer:
                                                dropout=dropout).to(device)
         self.optimizer = Ranger(self.model.parameters(), lr=lr, weight_decay=weight_decay)
         self.scheduler = CosineAnnealingWarmRestarts(self.optimizer, T_0=5, T_mult=2, eta_min=1e-6)
-        self.criterion = LabelSmoothingCrossEntropyLoss(smoothing=0.1, weight=class_weights)
+        self.criterion = EnhancedLabelSmoothingCrossEntropyLoss(smoothing=0.1, weight=class_weights)
 
     def fit(self, X_train, y_train, X_valid=None, y_valid=None):
         ds_train = SequenceDataset(X_train, y_train)
@@ -300,12 +298,14 @@ class HybridPitchTrainer:
             dl_valid = DataLoader(ds_valid, batch_size=self.batch_size, shuffle=False)
 
         best_val_loss = float('inf')
+        best_val_f1 = 0.0
         patience_counter = 0
 
         for epoch in range(self.epochs):
             self.current_epoch += 1
             self.model.train()
             total_loss = 0
+            # Warm-up learning rate for early epochs.
             if self.current_epoch <= self.warmup_epochs:
                 warmup_lr = (self.current_epoch / self.warmup_epochs) * self.optimizer.defaults['lr']
                 for param_group in self.optimizer.param_groups:
@@ -335,8 +335,10 @@ class HybridPitchTrainer:
                 val_loss = self._validate_loss(dl_valid)
                 acc, f1, prec, rec = self.evaluate(dl_valid)
                 print(f"Epoch {epoch+1}/{self.epochs} - Loss: {avg_loss:.4f} - ValLoss: {val_loss:.4f} - ValAcc: {acc:.4f}, F1: {f1:.4f}, Precision: {prec:.4f}, Recall: {rec:.4f}")
-                if val_loss < best_val_loss:
-                    best_val_loss = val_loss
+                # Early stopping now considers both loss and macro F1 to help avoid overfitting on accuracy/precision alone.
+                if val_loss < best_val_loss or f1 > best_val_f1:
+                    best_val_loss = min(val_loss, best_val_loss)
+                    best_val_f1 = max(f1, best_val_f1)
                     patience_counter = 0
                 else:
                     patience_counter += 1
@@ -401,26 +403,46 @@ class HybridPitchTrainer:
                 all_probs.append(probs.cpu().numpy())
         return np.concatenate(all_probs, axis=0)
 
-    def predict_cumulative(self, X_sequence, alpha=0.5):
+    def predict_cumulative(self, baseline_vector, n_pitches=3, strike_index=2, alpha=0.5):
         """
-        For a simulated sequence of pitches (each row is one pitch as a feature vector),
-        update the cumulative strike probability.
-        Expects X_sequence as a 2D array (n_pitches, feature_dim).
+        Simulates cumulative pitch outcome probabilities over a sequence.
+        This revised method iteratively updates the input (e.g. 'PrevStrike' and 'PitchNumber')
+        so that each prediction is based on the updated game state.
+        
+        Parameters:
+            baseline_vector: A 1D numpy array representing the baseline features for a pitch.
+                             It is assumed that the last feature is 'PrevStrike' and, if available,
+                             one of the features corresponds to 'PitchNumber'.
+            n_pitches: Number of simulated pitches.
+            strike_index: The index corresponding to 'Strike' in the predicted probabilities.
+            alpha: Scaling factor applied to the predicted strike probability.
+        
+        Returns:
+            A list of dictionaries, one per simulated pitch, with updated cumulative strike probability
+            and class probability breakdown.
         """
-        n_pitches = X_sequence.shape[0]
         cumulative_results = []
+        # Make a copy of the baseline vector to update dynamically.
+        current_state = baseline_vector.copy()
         cum_strike = 0.0
         for i in range(n_pitches):
-            # Update the "PrevStrike" feature (assumed to be the last column)
-            X_sequence[i, -1] = cum_strike
-            # Reshape to (1, 1, feature_dim) for a single-pitch sequence
-            current_input = X_sequence[i:i+1].reshape(1, 1, -1)
+            # Update dynamic feature 'PrevStrike' (assumed to be the last feature).
+            current_state[-1] = cum_strike
+            # Optionally update pitch number if the baseline vector contains it.
+            # For example, if the first feature is 'PitchNumber', increment it.
+            # Uncomment and modify the following lines if needed:
+            # current_state[0] = i + 1  
+            
+            # Reshape to (1, 1, feature_dim) for model input.
+            current_input = current_state.reshape(1, 1, -1)
             current_probs = self.predict_proba(current_input)[0]
-            cum_strike = alpha * current_probs[0] + (1 - alpha) * cum_strike
-            rec = {"PitchNumber": i + 1, "CumulativePrediction": int(np.argmax(current_probs))}
-            for cls, p_val in zip([f"Class_{j}" for j in range(self.model.fc_out.out_features)], current_probs):
-                rec[cls] = round(p_val * 100, 2)
-            cumulative_results.append(rec)
+            p_strike = current_probs[strike_index]
+            # Update cumulative strike probability using the given formula.
+            cum_strike = 1 - (1 - cum_strike) * (1 - alpha * p_strike)
+            record = {"PitchNumber": i + 1, "CumulativeStrikePct": round(cum_strike * 100, 2)}
+            for j, p_val in enumerate(current_probs):
+                record[f"Class_{j}"] = round(p_val * 100, 2)
+            cumulative_results.append(record)
         return cumulative_results
 
     def save(self, save_dir="Derived_data/ad_model_params/"):
@@ -450,48 +472,47 @@ def main_hybrid_pipeline(data_path="data.parquet", top_k_features=None, device=N
     df = pq.read_table(source=data_path).to_pandas()
     target_col = "CleanPitchCall"
     
-    # Use PlateAppearanceId if available; otherwise create one.
+    # Use PlateAppearanceId for sequence grouping.
     if "PlateAppearanceId" in df.columns:
         seq_id_col = "PlateAppearanceId"
     else:
         df["PlateAppearanceId"] = np.arange(len(df))
         seq_id_col = "PlateAppearanceId"
     
-    # Data cleaning and encoding
+    # Data cleaning and encoding.
     all_objs = df.select_dtypes(include=["object"]).columns.tolist()
     if target_col in all_objs:
         all_objs.remove(target_col)
     categorical_cols = all_objs
     df_clean = advanced_data_cleaning(df, target_col, categorical_cols)
     
-    # Encode target using LabelEncoder (for target only)
+    # Encode target using LabelEncoder if needed.
     from sklearn.preprocessing import LabelEncoder
     le_target = None
     if df_clean[target_col].dtype == "object":
         le_target = LabelEncoder()
         df_clean[target_col] = le_target.fit_transform(df_clean[target_col])
     
-    # Retain PitcherId and BatterId if available
+    # Retain PitcherId and BatterId if available.
     if "PitcherId" in df.columns:
         df_clean["PitcherId"] = df["PitcherId"]
     if "BatterId" in df.columns:
         df_clean["BatterId"] = df["BatterId"]
         
-    # Use variance-based encoding for categorical features
+    # Variance-based encoding for categorical features.
     df_encoded, encoders = encode_categorical_columns(df_clean, categorical_cols, target_col, encoders=None)
     
-    # Determine numeric and categorical columns (exclude target and sequence id)
+    # Define numeric and categorical feature lists.
     numeric_cols = [c for c in df_encoded.select_dtypes(include=[np.number]).columns 
                     if c not in categorical_cols and c != target_col and c != seq_id_col]
     if "PrevStrike" not in df_encoded.columns:
         df_encoded["PrevStrike"] = 0.0
     if "PrevStrike" not in numeric_cols:
         numeric_cols.append("PrevStrike")
-    # Exclude PitcherId and BatterId from categorical encoding (they can be used later as is)
     cat_cols = [c for c in categorical_cols if c not in ["PitcherId", "BatterId"]]
     feature_cols = numeric_cols + cat_cols
 
-    # Feature selection using mutual information (if desired)
+    # Optional feature selection using mutual information.
     if top_k_features is not None:
         selected_features = mutual_info_feature_selection(df_encoded[feature_cols], df_encoded[target_col], feature_cols, top_k=top_k_features)
         feature_cols = selected_features
@@ -500,26 +521,25 @@ def main_hybrid_pipeline(data_path="data.parquet", top_k_features=None, device=N
     
     num_classes = df_encoded[target_col].nunique()
     
-    # Create sequences by grouping on PlateAppearanceId
+    # Construct sequences grouped by plate appearance.
     sequences = []
     sequence_labels = []
     for pa_id, group in df_encoded.groupby(seq_id_col):
-        # If available, sort by PitchNumber for chronological order
         if "PitchNumber" in group.columns:
             group = group.sort_values("PitchNumber")
         seq_features = group[feature_cols].values  # (seq_len, feature_dim)
-        label = group[target_col].iloc[-1]  # use the last pitch outcome as sequence label
+        label = group[target_col].iloc[-1]  # use last pitch outcome as label
         sequences.append(seq_features)
         sequence_labels.append(label)
     
-    # Pad sequences to equal length
+    # Pad sequences to equal length.
     from torch.nn.utils.rnn import pad_sequence
     seq_tensors = [torch.tensor(seq, dtype=torch.float32) for seq in sequences]
     padded_seqs = pad_sequence(seq_tensors, batch_first=True)
-    X = padded_seqs.numpy()  # (num_sequences, max_seq_len, feature_dim)
+    X = padded_seqs.numpy()
     y = np.array(sequence_labels)
     
-    # Scale numeric features (apply StandardScaler on flattened numeric columns)
+    # Scale numeric features.
     num_idx = [feature_cols.index(c) for c in numeric_cols]
     X_reshaped = X.reshape(-1, X.shape[-1])
     scaler = StandardScaler()
@@ -528,7 +548,7 @@ def main_hybrid_pipeline(data_path="data.parquet", top_k_features=None, device=N
     
     class_weights = compute_class_weights(y, device=device)
     
-    # Split data into training and validation sets
+    # Train-validation split.
     X_train, X_val, y_train, y_val = train_test_split(
         X, y, test_size=0.2, stratify=y, random_state=42
     )
@@ -541,11 +561,11 @@ def main_hybrid_pipeline(data_path="data.parquet", top_k_features=None, device=N
         lr=1e-4,
         batch_size=64,
         epochs=100,
-        early_stopping_patience=10,
+        early_stopping_patience=5,
         device=device,
         class_weights=class_weights,
         weight_decay=1e-4,
-        dropout=0.4
+        dropout=0.5
     )
     final_trainer.fit(X_train, y_train, X_val, y_val)
     ds_val = SequenceDataset(X_val, y_val)
@@ -577,11 +597,12 @@ def main_hybrid_pipeline(data_path="data.parquet", top_k_features=None, device=N
 def prediction(pitcher, batter, model, scaler, encoders, target_encoder, df, feature_cols, numeric_cols, target_col,
                pitch_type_col="CleanPitchType", n_pitches=3, alpha=0.5):
     """
-    Given a pitcher and batter, this function simulates multiple pitch outcomes for each
-    candidate pitch type (from the pitcher's historical data) using the trained model.
-    It updates the cumulative strike probability over a sequence of pitches and returns a
-    DataFrame showing per-pitch predictions.
+    Given a pitcher and batter, simulate multiple pitch outcomes for each candidate pitch type.
+    For each candidate, update the cumulative strike probability over a sequence of pitches.
+    Returns a DataFrame with per-pitch predictions (with class names instead of encoded numbers),
+    candidate pitch type, best candidate recommendation, and sorted by PitchNumber.
     """
+    # Retrieve pitcher-specific data and candidate pitch types.
     pitcher_data = df[df["PitcherId"] == pitcher]
     if pitcher_data.empty:
         print(f"No data found for Pitcher {pitcher}.")
@@ -590,6 +611,8 @@ def prediction(pitcher, batter, model, scaler, encoders, target_encoder, df, fea
     if len(candidate_types) == 0:
         print(f"No candidate pitch types for Pitcher {pitcher}.")
         return pd.DataFrame()
+    
+    # Get baseline data from pitcher-batter matchup if available.
     matchup = df[(df["PitcherId"] == pitcher) & (df["BatterId"] == batter)]
     if not matchup.empty:
         baseline = matchup.iloc[0].copy(deep=True)
@@ -599,58 +622,58 @@ def prediction(pitcher, batter, model, scaler, encoders, target_encoder, df, fea
     if "PrevStrike" not in baseline:
         baseline["PrevStrike"] = 0.0
 
+    # Determine target classes.
     if target_encoder is not None:
         target_classes = list(target_encoder.classes_)
     else:
         target_classes = [f"Class_{i}" for i in range(model.model.fc_out.out_features)]
+    
+    try:
+        strike_index = target_classes.index("Strike")
+    except ValueError:
+        strike_index = 2
 
-    # Use the stored encoder for the pitch type if available
-    pitch_type_encoder = encoders.get(pitch_type_col, None)
-
-    records = []
+    simulation_records = []
     for candidate in candidate_types:
-        sim_row = baseline.copy(deep=True)
-        if pitch_type_encoder is not None:
-            # If target encoding was used, we assume candidate is in an acceptable format.
-            candidate_label = candidate
-        else:
-            candidate_label = candidate
-        sim_row[pitch_type_col] = candidate_label
-        cum_strike = 0.0
-        candidate_records = []
-        for pitch_num in range(1, n_pitches + 1):
-            sim_row["PrevStrike"] = cum_strike
-            sim_df = pd.DataFrame([sim_row])
-            # Apply the same variance-based encoding to simulation data
-            for col, mapping in encoders.items():
-                if col in sim_df.columns:
-                    sim_df[col] = sim_df[col].apply(lambda x: mapping.get(x, np.mean(list(mapping.values()))))
-            X_sim = sim_df[feature_cols].values
-            num_idx = [feature_cols.index(c) for c in numeric_cols]
-            X_sim[:, num_idx] = scaler.transform(X_sim[:, num_idx])
-            # Reshape to (1, 1, feature_dim) for the sequence model
-            current_input = X_sim.reshape(1, 1, -1)
-            probs = model.predict_proba(current_input)[0]
-            cum_strike = alpha * probs[0] + (1 - alpha) * cum_strike
-            rec = {"PitchNumber": pitch_num, "CandidatePitchType": candidate_label}
-            for cls, p_val in zip(target_classes, probs):
-                rec[cls] = round(p_val * 100, 2)
-            candidate_records.append(rec)
-        records.extend(candidate_records)
-    df_rec = pd.DataFrame(records)
-    # Determine which candidate yields the best strike probability
-    if "Strike" in target_classes:
-        strike_col = "Strike"
-    else:
-        strike_col = target_classes[0]
-    best_dict = df_rec.groupby("PitchNumber").apply(lambda d: d.loc[d[strike_col].idxmax(), "CandidatePitchType"]).to_dict()
-    df_rec["BestStrikePotential"] = df_rec["PitchNumber"].map(best_dict)
-    df_rec = df_rec.sort_values("PitchNumber").reset_index(drop=True)
-    return df_rec
+        sim_baseline = baseline.copy(deep=True)
+        sim_baseline[pitch_type_col] = candidate
+        sim_features = sim_baseline[feature_cols].values.astype(np.float32)
+        num_idx = [feature_cols.index(c) for c in numeric_cols]
+        sim_features[num_idx] = scaler.transform(sim_features[num_idx].reshape(1, -1))
+        # Use the baseline vector as the starting point.
+        cumulative_results = model.predict_cumulative(sim_features, n_pitches=n_pitches, strike_index=strike_index, alpha=alpha)
+        for res in cumulative_results:
+            # Build record with proper naming for candidate pitch type and probabilities.
+            new_record = {"PitchNumber": res["PitchNumber"],
+                          "CumulativeStrikePct": res["CumulativeStrikePct"]}
+            for j in range(len(target_classes)):
+                key = f"Class_{j}"
+                if key in res:
+                    new_record[target_classes[j]] = res[key]
+            new_record["Candidate Pitch Type"] = candidate
+            new_record["PitcherId"] = pitcher
+            new_record["BatterId"] = batter
+            simulation_records.append(new_record)
+    
+    sim_df = pd.DataFrame(simulation_records)
+    
+    # Determine best candidate per pitch based on the highest Strike probability.
+    best_candidates = sim_df.groupby("PitchNumber").apply(
+        lambda x: x.loc[x["Strike"].idxmax()]
+    )
+    best_candidates = best_candidates.reset_index(drop=True)
+    sim_df = sim_df.merge(
+        best_candidates[["PitchNumber", "Candidate Pitch Type"]].rename(
+            columns={"Candidate Pitch Type": "Best Strike Potential"}
+        ),
+        on="PitchNumber", how="left"
+    )
+    
+    # Sort final DataFrame by PitchNumber.
+    sim_df = sim_df.sort_values("PitchNumber").reset_index(drop=True)
+    
+    return sim_df
 
-###############################################################################
-# MAIN PIPELINE EXECUTION
-###############################################################################
 if __name__ == "__main__":
     data_path = "Derived_Data/feature/nDate_feature.parquet"  # Adapt path as needed
     # Optionally, set top_k_features (e.g., a subset of features) if desired:
