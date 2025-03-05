@@ -1,4 +1,4 @@
-# HackUSUS: Team Gone Phishing Pioneer Baseball AI/ML Project
+# HackUSU: Team Gone Phishing Pioneer Baseball AI/ML Project
 
 This project processes baseball game data to train machine learning models for predicting optimal pitching sequences and provides an interactive dashboard for data exploration and predictions.
 
@@ -89,7 +89,7 @@ The project has two main components:
 
 ## Contributors
 
-- **Team Gone Phishing (HackUSUS):**
+- **Team Gone Phishing (HackUSU):**
   - Annaka McClelland
   - Bracken Sant
   - Logan Ray
