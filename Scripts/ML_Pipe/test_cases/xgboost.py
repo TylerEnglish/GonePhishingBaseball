@@ -5,9 +5,7 @@ import pyarrow.parquet as pq
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.metrics import mean_squared_error
-from pytorch_tabnet.tab_model import TabNetRegressor
-import torch
-
+import xgboost as xgb
 
 # ==================================
 # Scripting Functions
@@ -39,22 +37,21 @@ def data_transform(df: pd.DataFrame) -> pd.DataFrame:
     df_grouped = df.groupby(["PitcherId", "BatterId"]).agg(agg_dict).reset_index()
     return df_grouped
 
-def build_model() -> TabNetRegressor:
+def build_model() -> xgb.XGBRegressor:
     """
-    Build and return a TabNet regression model.
+    Build and return an XGBoost regression model.
     
     Returns:
-        TabNetRegressor: The constructed model.
+        xgb.XGBRegressor: The constructed model.
     """
-    model = TabNetRegressor(
-        n_d=8,
-        n_a=8,
-        n_steps=3,
-        gamma=1.3,
-        lambda_sparse=1e-3,
-        optimizer_fn=torch.optim.Adam,
-        optimizer_params=dict(lr=2e-2),
-        mask_type='sparsemax'
+    model = xgb.XGBRegressor(
+        objective='reg:squarederror',
+        n_estimators=100,
+        learning_rate=0.1,
+        max_depth=8,
+        random_state=42,
+        n_jobs=-1,
+        eval_metric="rmse"  # Set eval_metric here
     )
     return model
 
@@ -114,17 +111,17 @@ def prepare_data(df: pd.DataFrame) -> pd.DataFrame:
     
     return df_agg
 
-def train_model(df: pd.DataFrame, model: TabNetRegressor):
+def train_model(df: pd.DataFrame, model: xgb.XGBRegressor):
     """
-    Splits the data, scales features, and trains the TabNet model.
+    Splits the data, scales features, and trains the XGBoost model.
     
     Parameters:
         df (pd.DataFrame): Preprocessed data including the target "PitchofPA".
-        model (TabNetRegressor): The untrained TabNet model.
+        model (xgb.XGBRegressor): The untrained XGBoost model.
     
     Returns:
         Tuple containing:
-            - Trained TabNet model.
+            - Trained XGBoost model.
             - Fitted StandardScaler.
             - Scaled validation features.
             - Validation target values.
@@ -142,26 +139,21 @@ def train_model(df: pd.DataFrame, model: TabNetRegressor):
     X_train_scaled = scaler.fit_transform(X_train)
     X_valid_scaled = scaler.transform(X_valid)
     
+    # Removed early_stopping_rounds parameter
     model.fit(
         X_train_scaled, y_train,
         eval_set=[(X_valid_scaled, y_valid)],
-        eval_metric=["rmse"],
-        max_epochs=100,
-        patience=10,
-        batch_size=256,
-        virtual_batch_size=128,
-        num_workers=0,
-        drop_last=False
+        verbose=True
     )
     
     return model, scaler, X_valid_scaled, y_valid, feature_cols
 
-def validate_model(model: TabNetRegressor, X_valid, y_valid) -> float:
+def validate_model(model: xgb.XGBRegressor, X_valid, y_valid) -> float:
     """
     Evaluate the trained model on the validation set using RMSE.
     
     Parameters:
-        model (TabNetRegressor): The trained model.
+        model (xgb.XGBRegressor): The trained model.
         X_valid (np.ndarray): Scaled validation features.
         y_valid (np.ndarray): Validation target values.
     
@@ -169,6 +161,8 @@ def validate_model(model: TabNetRegressor, X_valid, y_valid) -> float:
         float: The RMSE score.
     """
     preds = model.predict(X_valid)
+    # Convert predictions to integers (ceiling)
+    preds = np.ceil(preds).astype(int)
     rmse = np.sqrt(mean_squared_error(y_valid, preds))
     print(f"Validation RMSE: {rmse:.4f}")
     return rmse
@@ -177,19 +171,19 @@ def validate_model(model: TabNetRegressor, X_valid, y_valid) -> float:
 # Main Predict Function
 # ================================================
 
-def predict(pitcher: float, batter: float, model: TabNetRegressor, scaler: StandardScaler, df: pd.DataFrame):
+def predict(pitcher: float, batter: float, model: xgb.XGBRegressor, scaler: StandardScaler, df: pd.DataFrame):
     """
     Predict PitchofPA for a given PitcherId and BatterId.
     
     Parameters:
         pitcher (float): The PitcherId.
         batter (float): The BatterId.
-        model (TabNetRegressor): The trained model.
+        model (xgb.XGBRegressor): The trained model.
         scaler (StandardScaler): The fitted scaler.
         df (pd.DataFrame): The aggregated and preprocessed DataFrame.
     
     Returns:
-        float or None: The predicted PitchofPA, or None if no matching row is found.
+        int or None: The predicted PitchofPA as an integer, or None if no matching row is found.
     """
     row = df[(df["PitcherId"] == pitcher) & (df["BatterId"] == batter)]
     if row.empty:
@@ -198,9 +192,10 @@ def predict(pitcher: float, batter: float, model: TabNetRegressor, scaler: Stand
     feature_cols = [col for col in df.columns if col != "PitchofPA"]
     X_new = row[feature_cols].values
     X_new_scaled = scaler.transform(X_new)
+    
     pred = model.predict(X_new_scaled)
-    prediction = pred[0][0]
-    print(f"Predicted PitchofPA for Pitcher {pitcher} vs Batter {batter}: {prediction:.2f}")
+    prediction = int(np.ceil(pred[0]))
+    print(f"Predicted PitchofPA for Pitcher {pitcher} vs Batter {batter}: {prediction}")
     return prediction
 
 # =====================================
@@ -212,17 +207,18 @@ def model_train():
     Director function that:
       - Loads data from a parquet file.
       - Prepares the data (aggregation, conversion, missing value imputation, encoding).
-      - Trains the TabNet model and validates it using RMSE.
+      - Trains the XGBoost model and validates it using RMSE.
     
     Returns:
         Tuple containing:
-            - The trained TabNet model.
+            - The trained XGBoost model.
             - The fitted StandardScaler.
             - The aggregated and preprocessed DataFrame.
             - The list of feature column names.
     """
-    data_path = "Derived_Data/filter/filtered_20250301_000033.parquet"  
+    data_path = "Derived_Data/feature/nDate_feature.parquet"  
     if not os.path.exists(data_path):
+        print(f"Data file not found at: {data_path}")
         return None, None, None, None
 
     table = pq.read_table(source=data_path)
@@ -243,8 +239,8 @@ def model_train():
 
 if __name__ == "__main__":
     reg_model, scaler, df_agg, feature_cols = model_train()
-    if reg_model is not None:
-        # Sample PitcherId and BatterId values; update as needed.
+    if reg_model is not None and scaler is not None and df_agg is not None:
+        # Example usage
         pitcher_id = 1000066910.0
         batter_id = 1000032366.0
-        print(predict(pitcher_id, batter_id, reg_model, scaler, df_agg))
+        predict(pitcher_id, batter_id, reg_model, scaler, df_agg)

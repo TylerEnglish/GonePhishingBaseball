@@ -17,12 +17,6 @@ def data_transform(df: pd.DataFrame) -> pd.DataFrame:
     - For 'PitchofPA': use the maximum value.
     - For numeric columns: use the mean.
     - For categorical columns: take the first occurrence.
-    
-    Parameters:
-        df (pd.DataFrame): The raw pitch data.
-    
-    Returns:
-        pd.DataFrame: The aggregated DataFrame.
     """
     agg_dict = {}
     for col in df.columns:
@@ -40,9 +34,6 @@ def data_transform(df: pd.DataFrame) -> pd.DataFrame:
 def build_model() -> xgb.XGBRegressor:
     """
     Build and return an XGBoost regression model.
-    
-    Returns:
-        xgb.XGBRegressor: The constructed model.
     """
     model = xgb.XGBRegressor(
         objective='reg:squarederror',
@@ -57,51 +48,38 @@ def build_model() -> xgb.XGBRegressor:
 
 def prepare_data(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Prepares the data by performing:
+    Prepare the data:
       - Aggregation by PitcherId and BatterId.
-      - Conversion of datetime columns to numeric.
-      - Missing value imputation:
-            * Numeric columns: fill with the median (or 0 if median is NaN).
-            * Categorical columns: fill with "Missing".
-      - Conversion of non-numeric features to strings.
-      - Label encoding for categorical features.
-    
-    Parameters:
-        df (pd.DataFrame): The raw input DataFrame.
-    
-    Returns:
-        pd.DataFrame: The preprocessed and aggregated DataFrame.
+      - Convert datetime columns to numeric.
+      - Fill missing values.
+      - Convert non-numeric features to strings and label encode them.
     """
     df_agg = data_transform(df)
-
+    
     # Convert datetime columns to numeric (int64)
     for col in df_agg.columns:
         if pd.api.types.is_datetime64_any_dtype(df_agg[col]):
             df_agg[col] = df_agg[col].astype("int64")
     
-    # Fill missing values for each column except the target
+    # Fill missing values (except target)
     for col in df_agg.columns:
         if col == "PitchofPA":
             continue
         if np.issubdtype(df_agg[col].dtype, np.number):
             median_val = df_agg[col].median()
-            if np.isnan(median_val):
-                df_agg[col] = df_agg[col].fillna(0)
-            else:
-                df_agg[col] = df_agg[col].fillna(median_val)
+            df_agg[col] = df_agg[col].fillna(median_val if not np.isnan(median_val) else 0)
         else:
             df_agg[col] = df_agg[col].fillna("Missing")
     
-    # Drop rows where the target is missing
+    # Drop rows with missing target
     df_agg = df_agg.dropna(subset=["PitchofPA"])
     
-    # Convert non-numeric features to strings before label encoding
+    # Convert non-numeric features to strings and label encode
     feature_cols = [col for col in df_agg.columns if col != "PitchofPA"]
     for col in feature_cols:
         if not np.issubdtype(df_agg[col].dtype, np.number):
             df_agg[col] = df_agg[col].astype(str)
     
-    # Label encode categorical columns
     cat_cols = df_agg.select_dtypes(include=["object", "category"]).columns.tolist()
     encoders = {}
     for col in cat_cols:
@@ -114,76 +92,61 @@ def prepare_data(df: pd.DataFrame) -> pd.DataFrame:
 def train_model(df: pd.DataFrame, model: xgb.XGBRegressor):
     """
     Splits the data, scales features, and trains the XGBoost model.
-    
-    Parameters:
-        df (pd.DataFrame): Preprocessed data including the target "PitchofPA".
-        model (xgb.XGBRegressor): The untrained XGBoost model.
-    
-    Returns:
-        Tuple containing:
-            - Trained XGBoost model.
-            - Fitted StandardScaler.
-            - Scaled validation features.
-            - Validation target values.
-            - List of feature column names.
     """
     feature_cols = [col for col in df.columns if col != "PitchofPA"]
     X = df[feature_cols].values
     y = df["PitchofPA"].values.reshape(-1, 1)
     
-    X_train, X_valid, y_train, y_valid = train_test_split(
-        X, y, test_size=0.2, random_state=42
-    )
+    X_train, X_valid, y_train, y_valid = train_test_split(X, y, test_size=0.2, random_state=42)
     
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_valid_scaled = scaler.transform(X_valid)
     
-    # Removed early_stopping_rounds parameter
-    model.fit(
-        X_train_scaled, y_train,
-        eval_set=[(X_valid_scaled, y_valid)],
-        verbose=True
-    )
+    model.fit(X_train_scaled, y_train, eval_set=[(X_valid_scaled, y_valid)], verbose=True)
     
     return model, scaler, X_valid_scaled, y_valid, feature_cols
 
 def validate_model(model: xgb.XGBRegressor, X_valid, y_valid) -> float:
     """
-    Evaluate the trained model on the validation set using RMSE.
-    
-    Parameters:
-        model (xgb.XGBRegressor): The trained model.
-        X_valid (np.ndarray): Scaled validation features.
-        y_valid (np.ndarray): Validation target values.
-    
-    Returns:
-        float: The RMSE score.
+    Evaluate the model on the validation set using RMSE.
     """
     preds = model.predict(X_valid)
-    # Convert predictions to integers (ceiling)
     preds = np.ceil(preds).astype(int)
     rmse = np.sqrt(mean_squared_error(y_valid, preds))
     print(f"Validation RMSE: {rmse:.4f}")
     return rmse
 
+# -----------------------------------------------
+# Helper Functions for Saving/Loading the Model
+# -----------------------------------------------
+
+def save_regression_model(model: xgb.XGBRegressor, file_path="Derived_Data/model_params/model_params.json"):
+    """
+    Save the trained XGBoost regression model as a JSON file.
+    """
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    model.save_model(file_path)
+    print(f"Saved regression model to {file_path}")
+
+def load_regression_model(file_path="Derived_Data/model_params/model_params.json") -> xgb.XGBRegressor:
+    """
+    Load an XGBoost regression model from a JSON file.
+    """
+    if not os.path.exists(file_path):
+        raise ValueError(f"Model file not found at {file_path}; run training first.")
+    model = build_model()
+    model.load_model(file_path)
+    print(f"Loaded regression model from {file_path}")
+    return model
+
 # ================================================
-# Main Predict Function
+# Main Predict Function (for a single prediction)
 # ================================================
 
 def predict(pitcher: float, batter: float, model: xgb.XGBRegressor, scaler: StandardScaler, df: pd.DataFrame):
     """
     Predict PitchofPA for a given PitcherId and BatterId.
-    
-    Parameters:
-        pitcher (float): The PitcherId.
-        batter (float): The BatterId.
-        model (xgb.XGBRegressor): The trained model.
-        scaler (StandardScaler): The fitted scaler.
-        df (pd.DataFrame): The aggregated and preprocessed DataFrame.
-    
-    Returns:
-        int or None: The predicted PitchofPA as an integer, or None if no matching row is found.
     """
     row = df[(df["PitcherId"] == pitcher) & (df["BatterId"] == batter)]
     if row.empty:
@@ -192,29 +155,19 @@ def predict(pitcher: float, batter: float, model: xgb.XGBRegressor, scaler: Stan
     feature_cols = [col for col in df.columns if col != "PitchofPA"]
     X_new = row[feature_cols].values
     X_new_scaled = scaler.transform(X_new)
-    
     pred = model.predict(X_new_scaled)
     prediction = int(np.ceil(pred[0]))
     print(f"Predicted PitchofPA for Pitcher {pitcher} vs Batter {batter}: {prediction}")
     return prediction
 
-# =====================================
-# Director Function
-# =====================================
+# -----------------------------------------------
+# Director Function: Training Pipeline
+# -----------------------------------------------
 
 def model_train():
     """
-    Director function that:
-      - Loads data from a parquet file.
-      - Prepares the data (aggregation, conversion, missing value imputation, encoding).
-      - Trains the XGBoost model and validates it using RMSE.
-    
-    Returns:
-        Tuple containing:
-            - The trained XGBoost model.
-            - The fitted StandardScaler.
-            - The aggregated and preprocessed DataFrame.
-            - The list of feature column names.
+    Loads data, prepares it, trains the model, and validates it.
+    Returns the trained model, scaler, data, and feature names.
     """
     data_path = "Derived_Data/feature/nDate_feature.parquet"  
     if not os.path.exists(data_path):
@@ -226,21 +179,27 @@ def model_train():
     
     df_agg = prepare_data(df)
     
-    # Build and train the model
     reg_model = build_model()
     reg_model, scaler, X_valid, y_valid, feature_cols = train_model(df_agg, reg_model)
     validate_model(reg_model, X_valid, y_valid)
     
     return reg_model, scaler, df_agg, feature_cols
 
-# =====================================
+# -----------------------------------------------
 # Main Execution
-# =====================================
+# -----------------------------------------------
 
 if __name__ == "__main__":
+    # Train the model
     reg_model, scaler, df_agg, feature_cols = model_train()
     if reg_model is not None and scaler is not None and df_agg is not None:
-        # Example usage
+        # Save the trained regression model as JSON
+        save_regression_model(reg_model, file_path="Derived_Data/model_params/model_params.json")
+        
+        # Load the regression model from JSON
+        loaded_model = load_regression_model(file_path="Derived_Data/model_params/model_params.json")
+        
+        # Example prediction using the loaded model
         pitcher_id = 1000066910.0
         batter_id = 1000032366.0
-        predict(pitcher_id, batter_id, reg_model, scaler, df_agg)
+        predict(pitcher_id, batter_id, loaded_model, scaler, df_agg)

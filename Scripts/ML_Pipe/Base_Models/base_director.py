@@ -32,6 +32,18 @@ def zip_pickle_file(pkl_path):
     os.remove(pkl_path)
     return zip_path
 
+def unzip_file(zip_path):
+    """
+    Unzip a file and return the extracted file path (assumes a single file in the archive).
+    """
+    if not os.path.exists(zip_path):
+        raise FileNotFoundError(f"{zip_path} not found.")
+    with zipfile.ZipFile(zip_path, 'r') as z:
+        extract_dir = os.path.dirname(zip_path)
+        z.extractall(extract_dir)
+        extracted_file = os.path.join(extract_dir, z.namelist()[0])
+    return extracted_file
+
 # =================================
 # Scripting Methods
 # =================================
@@ -40,7 +52,7 @@ def save_models(models, extras):
     """
     Save model weights to Derived_Data/model_params.
     Also save 'extras' (scalers, data, encoders, etc.) to Derived_Data/extra.
-    After saving each pickle file, zip it immediately.
+    For the regression model, we now save in binary format.
     """
     # 1) Save the trained models
     model_dir = "Derived_Data/model_params"
@@ -48,14 +60,13 @@ def save_models(models, extras):
         os.makedirs(model_dir)
 
     if models.get("reg_model") is not None:
-        reg_path = os.path.join(model_dir, "reg_model.pkl")
+        # Save regression model in binary format
+        reg_path = os.path.join(model_dir, "reg_model.bin")
         models["reg_model"].save_model(reg_path)
         print(f"Saved regression model to {reg_path}")
-        reg_zip = zip_pickle_file(reg_path)
-        if reg_zip:
-            print(f"Saved and zipped regression model to {reg_zip}")
     
     if models.get("cls_model") is not None:
+        # Save classification model as before (with zipping)
         cls_path = os.path.join(model_dir, "cls_model.pkl")
         models["cls_model"].save_model(cls_path)
         print(f"Saved classification model to {cls_path}")
@@ -90,7 +101,6 @@ def save_models(models, extras):
 
     print("Saved extras (scalers, encoders, data) to Derived_Data/extra")
 
-
 def save_prediction(pred_df: pd.DataFrame, name="prediction"):
     """
     Save a single prediction DataFrame to Derived_Data/model_pred/.
@@ -103,7 +113,6 @@ def save_prediction(pred_df: pd.DataFrame, name="prediction"):
     
     pred_df.to_csv(pred_path, index=False)
     print(f"Saved {name} DataFrame to {pred_path}")
-
 
 # ===========================
 # Director function
@@ -148,22 +157,6 @@ def load_pickle_zip(filepath):
             return pickle.load(f)
         
 def predict(pitcher_ids=None, batter_ids=None, n_pitches=10):
-    """
-    Load saved regression and classification models (and extras) from disk,
-    then run predictions for each (pitcher, batter) pair.
-
-    Produces two DataFrames:
-      df_reg - one row per pitcher-batter (with 'RegressionPrediction')
-      df_cls - up to n_pitches repeated classification outputs (all pitch types, probabilities, etc.)
-
-    Saves two CSV files in Derived_Data/model_pred:
-      - reg_prediction_report_*.csv
-      - cls_prediction_report_*.csv
-
-    Returns:
-      (df_reg, df_cls)
-    """
-    
     # Default values if none provided
     if pitcher_ids is None:
         pitcher_ids = [1000066910.0]
@@ -176,19 +169,29 @@ def predict(pitcher_ids=None, batter_ids=None, n_pitches=10):
     if not isinstance(batter_ids, list):
         batter_ids = [batter_ids]
 
-    # Load the zipped TabNet models
+    # Load the saved models
     model_dir = "Derived_Data/model_params"
-    reg_model_zip = os.path.join(model_dir, "reg_model.pkl.zip")
+    # Use the filename that you saved the regression model as:
+    reg_model_path = os.path.join(model_dir, "model_params.json")
+    # Classification model remains as a zipped file
     cls_model_zip = os.path.join(model_dir, "cls_model.pkl.zip")
     
-    if not os.path.exists(reg_model_zip) or not os.path.exists(cls_model_zip):
-        raise ValueError(f"No saved model zip files found in {model_dir}; run training first.")
+    if not os.path.exists(reg_model_path):
+        raise ValueError(f"No saved regression model file found in {model_dir}; run training first.")
+    if not os.path.exists(cls_model_zip):
+        raise ValueError(f"No saved classification model zip file found in {model_dir}; run training first.")
+
+    # Optional: Print file info for debugging
+    with open(reg_model_path, "r") as f:
+        content = f.read()
+        print("Regression model file size:", len(content))
+        print("First 200 characters:", content[:200])
 
     reg_model = build_reg_model()
-    reg_model.load_model(reg_model_zip)
+    reg_model.load_model(reg_model_path)  # Load regression model from JSON
 
     cls_model = build_cls_model()
-    cls_model.load_model(cls_model_zip)
+    cls_model.load_model(cls_model_zip)     # Load classification model from zip
 
     # Load extras from Derived_Data/extra (they are zipped pickle files)
     extras_dir = "Derived_Data/extra"
@@ -202,8 +205,8 @@ def predict(pitcher_ids=None, batter_ids=None, n_pitches=10):
     target_col = load_pickle_zip(os.path.join(extras_dir, "target_col.pkl.zip"))
     df_cls_data = load_pickle_zip(os.path.join(extras_dir, "df_cls.pkl.zip"))
 
-    print(f"\nLoaded TabNet regression model from: {reg_model_zip}")
-    print(f"Loaded TabNet classification model from: {cls_model_zip}")
+    print(f"\nLoaded regression model from: {reg_model_path}")
+    print(f"Loaded classification model from: {cls_model_zip}")
     print(f"Running predictions for Pitchers={pitcher_ids} x Batters={batter_ids}, n_pitches={n_pitches}")
 
     # ========== 1) Regression DataFrame ==========
@@ -232,13 +235,13 @@ def predict(pitcher_ids=None, batter_ids=None, n_pitches=10):
                     print(f"No classification data for (Pitcher={p_id}, Batter={b_id}) at pitch# {pitch_number}")
                     continue
 
-                # Add extra columns
                 temp_df = results_df.copy()
                 temp_df["PitcherId"] = p_id
                 temp_df["BatterId"] = b_id
                 temp_df["PitchNumber"] = pitch_number
                 temp_df["RecommendedPitch"] = best_pitch
-                cls_records.append(temp_df)# Save results in Derived_Data/model_pred
+                cls_records.append(temp_df)
+                
                 out_dir = "Derived_Data/model_pred"
                 if not os.path.exists(out_dir):
                     os.makedirs(out_dir)
@@ -251,7 +254,6 @@ def predict(pitcher_ids=None, batter_ids=None, n_pitches=10):
                 print(f"\nSaved regression results to {reg_out_path}")
                 print(f"Saved classification results to {cls_out_path}\n")
     
-
     return df_reg, df_cls
 
 # ====================
@@ -283,7 +285,7 @@ def training_pipe():
 
 if __name__ == "__main__":
     # Example 1: Run the full pipeline (train + save + predict)
-    training_pipe()
+    # training_pipe()
 
     # Example 2: If models & extras are already saved, just do predictions
     # (comment out the training_pipe if you only want to do inference)
