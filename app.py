@@ -72,6 +72,7 @@ selected_pitcher_team = st.sidebar.selectbox(
     index=list(pitcher_team).index("Idaho Falls Chukars"),  # Set default to 'IDA_CHU'
 )
 
+pitcher_batter_data = data
 if selected_pitcher_team != "All Teams":
     data = data[data["TeamName"] == selected_pitcher_team]
 
@@ -147,28 +148,50 @@ with ml:
         score.columns = ["Accuracy", "F1", "Precision"]
         st.markdown(score.style.hide(axis="index").to_html(), unsafe_allow_html=True)
 
-    uploaded_file = st.file_uploader(
-        "Upload a CSV or Excel file", type=["csv", "xlsx", "parquet"]
-    )
-    if uploaded_file is not None:
-        # Check file type and load accordingly
-        if uploaded_file.name.endswith(".csv"):
-            df = pd.read_csv(uploaded_file)
-        elif uploaded_file.name.endswith(".xlsx"):
-            df = pd.read_excel(uploaded_file)
-        elif uploaded_file.name.endswith(".parquet"):
-            df = pd.read_parquet(uploaded_file)
 
-        unique_pitchers = list(df["PitcherId"].unique())
-        unique_batters = list(df["BatterId"].unique())
+    team = list(pitcher_batter_data["TeamName"].unique())
 
-        pitcher_id = [1000066910.0, 1000060505.0, 701628.0, 815136.0, 1000056876.0]
-        batter_id = [1000032366.0, 1000274194.0, 1000035496.0, 1000056633.0, 683106.0]
+    team.sort()
+    # Dropdown menu with default set to 'IDA_CHU'
 
-        predictions = predict(pitcher_id[0], batter_id[0])
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        pitcher_team = st.selectbox(
+            "Select the Pitcher's Team",
+            options=team,
+            index=list(team).index("Idaho Falls Chukars"),  # Set default to 'IDA_CHU'
+        )
+        pitcher = list(pitcher_batter_data[pitcher_batter_data["TeamName"] == pitcher_team]["PitcherId"].unique())
+        pitcher = [None] + pitcher
 
-        cls_pred = f"Derived_Data/model_pred/cls_prediction_report_{int(pitcher_id[0])}_{int(batter_id[0])}.csv"
-        reg_pred = f"Derived_Data/model_pred/reg_prediction_report_{int(pitcher_id[0])}_{int(batter_id[0])}.csv"
+        pitcher_id = st.selectbox(
+            "Select a Pitcher (curr. ID can be full name)",
+            options=pitcher,
+            index=None,
+        )
+
+    # Dropdown menu with default set to 'IDA_CHU'
+    with col3:
+        batter_team = st.selectbox(
+            "Select the Batter's Team",
+            options=team,
+            index=list(team).index("Boise Hawks"),  # Set default to 'Boise Hawks'
+        )
+        batters = list(pitcher_batter_data[pitcher_batter_data["TeamName"] == batter_team]["BatterId"].unique())
+        batters = [None] + batters
+
+        batter_id = st.selectbox(
+            "Select a Batter (curr. ID can be full name)",
+            options=batters,
+            index=None,
+        )
+
+
+    if batter_id is not None and pitcher_id is not None:
+        predictions = predict(pitcher_id, batter_id)
+
+        cls_pred = f"Derived_Data/model_pred/cls_prediction_report_{int(pitcher_id)}_{int(batter_id)}.csv"
+        reg_pred = f"Derived_Data/model_pred/reg_prediction_report_{int(pitcher_id)}_{int(batter_id)}.csv"
 
         reg = pd.read_csv(reg_pred)
         cls = pd.read_csv(cls_pred)
@@ -847,103 +870,8 @@ with appendix:
         with col2:
             st.plotly_chart(fig)
 
-        with future:
-            st.title("Hackathon Journey")
+with future:
+    with open("journey.md", "r") as file:
+        md_content = file.read()
 
-            st.markdown("### Background")
-            st.markdown("- Data from Pioneer Baseball League")
-            st.markdown(
-                "- We were asked to make a Machine Learning Model to predict the best pitching sequence to strike out an opposing batter"
-            )
-
-            st.markdown("### Summary of Machine Learning")
-            st.markdown(
-                "- **Data Cleaning**: Cleaned the data by merging columns, resolving Nulls, filtering out data, and fixing data types"
-            )
-
-            st.markdown("- **Feature Engineering**:")
-            st.markdown("    - **Basic Feature Engineering**:")
-            st.markdown(
-                "        - Grouping: Data is grouped by Date, PitchNo, PitcherId, and BatterId."
-            )
-            st.markdown("        - **Key Metrics:**")
-            st.markdown("            - Avg_Pitch_Speed: Mean release speed (RelSpeed).")
-            st.markdown(
-                "            - Release Angles & Spin: Average vertical (VertRelAngle) and horizontal (HorzRelAngle) release angles, spin rate, and spin axis."
-            )
-            st.markdown(
-                "            - Count-Based Rates: Strike and ball percentages from PitchCall."
-            )
-            st.markdown(
-                "            - Outcome Metrics: Total Outs Created and average plate location (PlateLocHeight/PlateLocSide)."
-            )
-            st.markdown(
-                "        - **Purpose:** Provides foundational insights into pitch quality and release mechanics on a per-plate appearance basis."
-            )
-
-            st.markdown("    - **Advanced Feature Engineering**:")
-            st.markdown("        - Aggregation of Pitch Sequencing:")
-            st.markdown(
-                "            - Pitch_Type_Diversity & Sequencing Entropy: Measures the variety and unpredictability of pitch types using Shannon entropy."
-            )
-            st.markdown(
-                "            - Movement Ratios: Vertical vs. Horizontal break ratios and Pitch Zonal Targeting based on PlateLocHeight."
-            )
-            st.markdown(
-                "            - Velocity Metrics: Maximum Effective Velocity and Avg_Velocity_Drop."
-            )
-            st.markdown(
-                "            - Pitch Mix Ratios: Breaking Ball Ratio and Fastball-to-Offspeed Ratio."
-            )
-            st.markdown(
-                "            - Release Consistency: Deviation in release extension, reflecting mechanical consistency."
-            )
-            st.markdown(
-                "            - Avg_Hit_Exit_Velocity: Average exit speed of batted balls."
-            )
-            st.markdown(
-                "        - **Purpose:** Captures deeper strategic elements and pitch movement profiles that influence batter performance."
-            )
-
-            st.markdown("    - **More Advanced Feature Engineering**:")
-            st.markdown("        - Enhanced Metrics with Smoothing:")
-            st.markdown(
-                "            - Combining pitch-level, matchup-level, and batter-level data with Laplace smoothing (alpha=1, beta=2) to ensure robustness:"
-            )
-            st.markdown(
-                "            - Pitch-Level: Includes Pitch_Type_Variance, Speed_Consistency, Change_in_Speed_Per_Pitch, and Pitcher_Aggressiveness."
-            )
-            st.markdown(
-                "            - Matchup-Level: Computes smoothed Hit_Probability and Strikeout_Likelihood for each pitcher-batter pair."
-            )
-            st.markdown(
-                "            - Batter-Level: Determines Batter_Strikeout_Tendency."
-            )
-            st.markdown(
-                "        - **Purpose:** Integrates individual pitch details with overall matchup trends to create a comprehensive feature set for predicting optimal pitch sequences."
-            )
-
-            st.markdown(
-                "- **Baseline Models Tested**: TabNetClassifier, PyCaretClassifier, TabNetRegressor, PyCaretRegressor, XGBoost"
-            )
-            st.markdown(
-                "- **Findings**: TabNet performed best for classification, while XGBoost was slightly superior for regression."
-            )
-            st.markdown(
-                "- **Test Case Model**: PyCaretClassifier performed well with basic features but switching to TabNetClassifier yielded even better results."
-            )
-            st.markdown(
-                "  PyCaretRegressor underperformed on base features; TabNetRegressor showed slight improvement, but XGBoost emerged as the best regressor."
-            )
-
-            st.markdown("### Streamlit Implementation")
-            st.markdown("- Built framework and filled in fields about our project")
-            st.markdown(
-                "- Data exploration while creating graphs and looking for outliers."
-            )
-            st.markdown(
-                "- Made charts after data exploration and found good insights into the data."
-            )
-            st.markdown(
-                "- Made ML integration - Allows for file upload and insertion of data"
-            )
+    st.markdown(md_content, unsafe_allow_html=True)
