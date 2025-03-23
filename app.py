@@ -192,12 +192,27 @@ with ml:
 
         cls_pred = f"Derived_Data/model_pred/cls_prediction_report_{int(pitcher_id)}_{int(batter_id)}.csv"
         reg_pred = f"Derived_Data/model_pred/reg_prediction_report_{int(pitcher_id)}_{int(batter_id)}.csv"
-
-        reg = pd.read_csv(reg_pred)
+        
+        reg = pd.read_csv(reg_pred)[["RegressionPrediction"]]
         cls = pd.read_csv(cls_pred)
+        
+        if type(reg.iloc[0, reg.columns.get_loc("RegressionPrediction")]) is np.int64:
+            r = range(1,int(reg["RegressionPrediction"].iloc[:1])+1)
+            cls2 = cls.loc[cls["PitchNumber"].isin(r)].groupby(["PitchNumber", "RecommendedPitch"]).agg({"Strike":"sum"}).reset_index()
+        else:
+            r = range(1,11)
+            cls2 = cls.loc[cls["PitchNumber"].isin(r)].groupby(["PitchNumber", "RecommendedPitch"]).agg({"Strike":"sum"}).reset_index()
+        
+        cls2 = cls2[["PitchNumber", "RecommendedPitch"]]
+        cls4 = cls[["PitchNumber", "RecommendedPitch", "Ball", "Hit", "Strike", "Undefined", "Walk"]].groupby(["PitchNumber", "RecommendedPitch"]).agg({"Ball":"mean", "Hit":"mean", "Strike":"mean", "Undefined":"mean", "Walk":"mean"}).reset_index()
+        cls4["Ball"] = np.round(cls4["Ball"],2).astype(str)+"%"
+        cls4["Hit"] = np.round(cls4["Hit"],2).astype(str)+"%"
+        cls4["Strike"] = np.round(cls4["Strike"],2).astype(str)+"%"
+        cls4["Undefined"] = np.round(cls4["Undefined"],2).astype(str)+"%"
+        cls4["Walk"] = np.round(cls4["Walk"],2).astype(str)+"%"
 
-        st.table(reg)
-        st.table(cls)
+        st.table(cls2)
+        st.table(cls4)
 
 
 with outs:
