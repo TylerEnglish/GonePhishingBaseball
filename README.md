@@ -81,10 +81,10 @@ The project has two main components:
    ```
 
 4. **Launch the Dashboard:**  
-   Run the dashboard script (`streamlit_app.py`) to start the Streamlit application, which opens in your browser for interactive exploration and prediction.
+   Run the dashboard script (`app.py`) to start the Streamlit application, which opens in your browser for interactive exploration and prediction.
    ```bash
     cd ../../
-    streamlit run streamlit_app.py
+    streamlit run app.py
    ```
 
 ## Contributors
