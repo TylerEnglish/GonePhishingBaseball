@@ -77,7 +77,7 @@ The project has two main components:
    ```bash
     cd ../../Scripts/ML_Pipe
     # Run the base director to start training and prediction generation
-    python base_director.py
+    python ml_director.py
    ```
 
 4. **Launch the Dashboard:**  
