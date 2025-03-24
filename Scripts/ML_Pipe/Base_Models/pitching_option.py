@@ -167,7 +167,7 @@ def train(df, model, encoders, feature_cols, target_col):
         X_train, y_train,
         eval_set=[(X_valid, y_valid)],
         eval_metric=[MacroF1, RecallScoreMetric, PrecisionScoreMetric, MCC, CohenKappa],
-        max_epochs=2,
+        max_epochs=100,
         patience=10,
         batch_size=256,
         virtual_batch_size=128,

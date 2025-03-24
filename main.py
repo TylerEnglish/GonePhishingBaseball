@@ -37,7 +37,7 @@ if __name__ == "__main__":
         count="2-1",
         outs=2,
         inning=7,
-        override_n_pitches=10  # Doesnt use Regression Result (can use a SD instead)
+        override_n_pitches=10  # Doesnt use Regression Result (can use SD instead)
     )
     print("\n\n\n\n=== Combined Predict Results (no regression)===")
     for idx, row in df.iterrows():
