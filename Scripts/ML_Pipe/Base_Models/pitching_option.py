@@ -51,6 +51,7 @@ class MacroF1(Metric):
 
 class MCC(Metric):
     '''
+    Matthews Correlation Coefficient
     MCC is a robust metric that evaluates the quality of predictions by taking into 
     account true positives, true negatives, false positives, and false negatives. 
     It produces a value between –1 and 1, where 1 indicates perfect prediction, 
@@ -392,12 +393,12 @@ def model_train(data_path="data.parquet"):
     scores = validate(model, X_valid, y_valid)
     
     # Define the paths to save each object.
-    TABNET_MODEL_ZIP    = "Derived_Data/model_params/"   # TabNet model
-    TABNET_SCALER_ZIP   = "Derived_Data/extra/"
-    TABNET_ENCODERS_ZIP = "Derived_Data/extra/"
-    TABNET_FEATS_ZIP    = "Derived_Data/extra/"
-    TABNET_TARGET_ZIP   = "Derived_Data/extra/"
-    TABNET_DATA_ZIP     = "Derived_Data/extra/"
+    TABNET_MODEL_ZIP    = "Derived_Data/model_params/cls_model.pkl.zip"   # TabNet model
+    TABNET_SCALER_ZIP   = "Derived_Data/extra/cls_scaler.pkl.zip"
+    TABNET_ENCODERS_ZIP = "Derived_Data/extra/encoders.pkl.zip"
+    TABNET_FEATS_ZIP    = "Derived_Data/extra/feature_cols_cls.pkl.zip"
+    TABNET_TARGET_ZIP   = "Derived_Data/extra/target_col.pkl.zip"
+    TABNET_DATA_ZIP     = "Derived_Data/extra/df_cls.pkl.zip"
 
     # Save each object as a zip-compressed pickle file.
     save_pickle_zip(model, TABNET_MODEL_ZIP, "cls_model.pkl.zip")
