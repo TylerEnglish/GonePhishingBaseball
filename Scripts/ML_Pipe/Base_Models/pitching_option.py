@@ -29,6 +29,12 @@ def save_pickle_zip(obj, zip_path, internal_filename):
         data = pickle.dumps(obj)
         zf.writestr(internal_filename, data)
 
+def load_pickle_zip(file_path):
+    with zipfile.ZipFile(file_path, 'r') as zipf:
+        inner = zipf.namelist()[0]
+        with zipf.open(inner) as f:
+            return pickle.load(f)
+
 #==========================
 # Metrics
 #==========================
@@ -161,7 +167,7 @@ def train(df, model, encoders, feature_cols, target_col):
         X_train, y_train,
         eval_set=[(X_valid, y_valid)],
         eval_metric=[MacroF1, RecallScoreMetric, PrecisionScoreMetric, MCC, CohenKappa],
-        max_epochs=100,
+        max_epochs=2,
         patience=10,
         batch_size=256,
         virtual_batch_size=128,
@@ -340,88 +346,124 @@ def model_train(data_path="data.parquet"):
     """
     Director function:
       - Loads data from a parquet file.
-      - Uses all columns except the target column as features.
-      - Automatically detects and encodes categorical columns.
-      - Fills missing values robustly and drops rows with missing target.
-      - Trains the TabNet classifier, validates it, and returns the trained model along with related objects.
+      - Preprocesses data, trains the TabNet classifier, validates it, and returns related objects.
     """
     if not os.path.exists(data_path):
         print(f"Data file not found: {data_path}")
-        return None, None, None, None, None, None
-    
+        return None, None, None, None, None, None, None
+
     # Load data.
     table = pq.read_table(source=data_path)
     df = table.to_pandas()
-    
+
     # Define target column.
     target_col = 'CleanPitchCall'
-    
+
     # Fill missing values for every feature column.
     for col in df.columns:
         if col == target_col:
             continue
         if np.issubdtype(df[col].dtype, np.number):
             median_val = df[col].median()
-            if pd.isna(median_val):
-                df[col] = df[col].fillna(0)
-            else:
-                df[col] = df[col].fillna(median_val)
+            df[col] = df[col].fillna(median_val if not pd.isna(median_val) else 0)
         else:
             df[col] = df[col].fillna("Missing")
-    
+
     # Drop rows where the target is missing.
     df = df.dropna(subset=[target_col])
-    
+
     # Use all columns except the target as features.
     feature_cols = [col for col in df.columns if col != target_col]
-    
+
     # Automatically detect categorical columns (assume object-type).
     categorical_cols = df.select_dtypes(include=['object']).columns.tolist()
     if df[target_col].dtype == 'object' and target_col not in categorical_cols:
         categorical_cols.append(target_col)
-    
+
     encoders = {}
     for col in categorical_cols:
         le = LabelEncoder()
         df[col] = df[col].astype(str)
         le.fit(df[col])
         encoders[col] = le
-    
+
+    # Build, train, and validate the model.
     model = build_model()
     model, scaler, X_valid, y_valid = train(df, model, encoders, feature_cols, target_col)
-    
     scores = validate(model, X_valid, y_valid)
-    
-    # Define the paths to save each object.
-    TABNET_MODEL_ZIP    = "Derived_Data/model_params/cls_model.pkl.zip"   # TabNet model
-    TABNET_SCALER_ZIP   = "Derived_Data/extra/cls_scaler.pkl.zip"
-    TABNET_ENCODERS_ZIP = "Derived_Data/extra/encoders.pkl.zip"
-    TABNET_FEATS_ZIP    = "Derived_Data/extra/feature_cols_cls.pkl.zip"
-    TABNET_TARGET_ZIP   = "Derived_Data/extra/target_col.pkl.zip"
-    TABNET_DATA_ZIP     = "Derived_Data/extra/df_cls.pkl.zip"
 
-    # Save each object as a zip-compressed pickle file.
-    save_pickle_zip(model, TABNET_MODEL_ZIP, "cls_model.pkl.zip")
-    save_pickle_zip(scaler, TABNET_SCALER_ZIP, "cls_scaler.pkl.zip")
-    save_pickle_zip(encoders, TABNET_ENCODERS_ZIP, "encoders.pkl.zip")
-    save_pickle_zip(feature_cols, TABNET_FEATS_ZIP, "feature_cols_cls.pkl.zip")
-    save_pickle_zip(target_col, TABNET_TARGET_ZIP, "target_col.pkl.zip")
-    save_pickle_zip(df, TABNET_DATA_ZIP, "df_cls.pkl.zip")
-    
+    # Return objects without saving the model here.
     return model, scaler, encoders, feature_cols, target_col, df, scores
 
 # =====================================
 # Main Execution
 # =====================================
-if __name__ == "__main__":
-    data_path = "Derived_Data/feature/nDate_feature.parquet"  
+def run_training_and_save(data_path="Derived_Data/feature/nDate_feature.parquet"):
+    """
+    Trains the model and saves it (along with related objects) only once.
+    """
     model, scaler, encoders, feature_cols, target_col, df, scores = model_train(data_path=data_path)
+    if model is None:
+        print("Training failed; no model produced.")
+        return
+
+    # Define a base path for the TabNet model without the ".zip" extension.
+    base_model_path = "Derived_Data/model_params/cls_model.pkl"
     
-    if model is not None:
-        # Replace these with actual PitcherId and BatterId values from your data.
-        pitcher_id = 1000066910.0
-        batter_id = 1000032366.0
-        best_pitch, results_df = predict(pitcher_id, batter_id, model, scaler, encoders, df, feature_cols, target_col)
-        print("\nFinal Recommended Pitch:", best_pitch)
-        print("\nDetailed Prediction Table:")
-        print(results_df)
+    # Remove the existing file if it exists (the save_model() method appends '.zip').
+    if os.path.exists(base_model_path + ".zip"):
+        os.remove(base_model_path + ".zip")
+    
+    # Save the model. The TabNet save_model() automatically appends '.zip'
+    model.save_model(base_model_path)
+    
+    # Save additional objects using your custom function.
+    save_pickle_zip(scaler, "Derived_Data/extra/cls_scaler.pkl.zip", "cls_scaler.pkl.zip")
+    save_pickle_zip(encoders, "Derived_Data/extra/encoders.pkl.zip", "encoders.pkl.zip")
+    save_pickle_zip(feature_cols, "Derived_Data/extra/feature_cols_cls.pkl.zip", "feature_cols_cls.pkl.zip")
+    save_pickle_zip(target_col, "Derived_Data/extra/target_col.pkl.zip", "target_col.pkl.zip")
+    save_pickle_zip(df, "Derived_Data/extra/df_cls.pkl.zip", "df_cls.pkl.zip")
+    
+    print("Training complete and objects saved.")
+    # Return the actual saved model file path (with '.zip' appended)
+    return base_model_path + ".zip"
+
+# -----------------------------
+# Main Loading & Prediction Function
+# -----------------------------
+def run_loaded_prediction(model_path):
+    # Load the extra objects.
+    loaded_scaler      = load_pickle_zip("Derived_Data/extra/cls_scaler.pkl.zip")
+    loaded_encoders    = load_pickle_zip("Derived_Data/extra/encoders.pkl.zip")
+    loaded_feature_cols = load_pickle_zip("Derived_Data/extra/feature_cols_cls.pkl.zip")
+    loaded_target_col  = load_pickle_zip("Derived_Data/extra/target_col.pkl.zip")
+    loaded_df          = load_pickle_zip("Derived_Data/extra/df_cls.pkl.zip")
+    
+    # Create a new TabNet model instance and load the saved parameters.
+    loaded_model = TabNetClassifier()
+    loaded_model.load_model(model_path)
+    
+    # Replace these with actual PitcherId and BatterId values from your data.
+    pitcher_id = 1000066910.0
+    batter_id  = 1000032366.0
+    
+    best_pitch, results_df = predict(
+        pitcher_id, batter_id, 
+        loaded_model, loaded_scaler, loaded_encoders, 
+        loaded_df, loaded_feature_cols, loaded_target_col
+    )
+    
+    print("\nFinal Recommended Pitch:", best_pitch)
+    print("\nDetailed Prediction Table:")
+    print(results_df)
+
+# -----------------------------
+# Main Execution Block
+# -----------------------------
+if __name__ == "__main__":
+    # (Re)train and save the model and related objects.
+    saved_model_path = run_training_and_save(data_path="Derived_Data/feature/nDate_feature.parquet")
+    
+    if saved_model_path:
+        # Load the saved model and objects, then run a prediction.
+        run_loaded_prediction(saved_model_path)

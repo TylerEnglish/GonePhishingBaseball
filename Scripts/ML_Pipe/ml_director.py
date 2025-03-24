@@ -20,7 +20,8 @@ if __name__ == "__main__":
     from Base_Models.num_pitches import (
         model_train as train_reg,         # returns (reg_model, scaler, df_agg, feature_cols)
         predict as predict_reg,
-        build_model as build_reg_model
+        build_model as build_reg_model,
+        load_regression_model
     )
     from Base_Models.pitching_option import (
         model_train as train_cls,         # returns (model, scaler, encoders, feature_cols, target_col, df, scores)
@@ -28,6 +29,7 @@ if __name__ == "__main__":
         build_model as build_cls_model,
         predict_single_pitch
     )
+    from Base_Models.pitching_option import build_model as build_tabnet_model
 else:
     from Scripts.ML_Pipe.Recommend.model import (
         load_data,
@@ -41,7 +43,8 @@ else:
     from Scripts.ML_Pipe.Base_Models.num_pitches import (
         model_train as train_reg,
         predict as predict_reg,
-        build_model as build_reg_model
+        build_model as build_reg_model,
+        load_regression_model
     )
     from Scripts.ML_Pipe.Base_Models.pitching_option import (
         model_train as train_cls,
@@ -49,7 +52,7 @@ else:
         build_model as build_cls_model,
         predict_single_pitch
     )
-    
+    from Scripts.ML_Pipe.Base_Models.pitching_option import build_model as build_tabnet_model
 # -----------------------------------
 #  Loading
 # -----------------------------------
@@ -159,7 +162,7 @@ def predict(
     grab_load()
 
     # B) Load Regression Model
-    from Base_Models.num_pitches import load_regression_model
+    
     reg_model = load_regression_model(REG_JSON_PATH)
     reg_scaler = load_pickle_zip(REG_SCALER_ZIP)
     df_reg_data = load_pickle_zip(REG_DF_ZIP)
@@ -210,8 +213,6 @@ def predict(
             "Pitch": recommended_pitches,
             "Probabilities": [None] * len(recommended_pitches)
         })
-
-    from Base_Models.pitching_option import build_model as build_tabnet_model
     tabnet_model = build_tabnet_model()
     tabnet_model.load_model(TABNET_MODEL_ZIP)
 
