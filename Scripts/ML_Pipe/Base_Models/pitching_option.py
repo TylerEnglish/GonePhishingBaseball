@@ -8,8 +8,105 @@ from sklearn.preprocessing import LabelEncoder
 from pytorch_tabnet.tab_model import TabNetClassifier
 import torch
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score, f1_score, precision_score
+from sklearn.metrics import accuracy_score, f1_score, precision_score,recall_score
+from sklearn.metrics import matthews_corrcoef, cohen_kappa_score
+from pytorch_tabnet.metrics import Metric
+import numpy as np
+from sklearn.metrics import f1_score
+import pickle
+import zipfile
 
+#====================================
+# Helper: Save Object as Zip-Pickle
+#====================================
+def save_pickle_zip(obj, zip_path, internal_filename):
+    """
+    Pickle the object and save it as a compressed zip file.
+    """
+    # Ensure the target directory exists
+    os.makedirs(os.path.dirname(zip_path), exist_ok=True)
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        data = pickle.dumps(obj)
+        zf.writestr(internal_filename, data)
+
+#==========================
+# Metrics
+#==========================
+class MacroF1(Metric):
+    '''
+    Macro F1 computes the F1-score for each class individually—calculating 
+    the harmonic mean of precision and recall—and then averages these scores 
+    equally across all classes. This ensures that the performance of each 
+    class is weighted equally regardless of its frequency, making it especially 
+    useful for imbalanced datasets. It effectively penalizes the model if even 
+    one class has poor precision or recall. Overall, Macro F1 offers a balanced 
+    view that emphasizes both false positives and false negatives.
+    '''
+    def __init__(self):
+        self._name = "macro_f1"
+        self._maximize = True 
+    def __call__(self, y_true, y_score):
+        y_pred = np.argmax(y_score, axis=1) 
+        return f1_score(y_true, y_pred, average="macro")
+
+class MCC(Metric):
+    '''
+    MCC is a robust metric that evaluates the quality of predictions by taking into 
+    account true positives, true negatives, false positives, and false negatives. 
+    It produces a value between –1 and 1, where 1 indicates perfect prediction, 
+    0 indicates no better than random guessing, and –1 signifies total disagreement. 
+    This metric is particularly valuable in imbalanced settings because it reflects 
+    the overall structure of the confusion matrix. MCC thus provides a holistic 
+    assessment of model performance that is not skewed by class imbalance.
+    '''
+    def __init__(self):
+        self._name = "mcc"
+        self._maximize = True  # maximize correlation
+    def __call__(self, y_true, y_score):
+        y_pred = np.argmax(y_score, axis=1)
+        return matthews_corrcoef(y_true, y_pred)
+class CohenKappa(Metric):
+    '''
+    Cohen’s Kappa measures the agreement between predicted labels and true labels while 
+    accounting for the possibility of chance agreement. It compares the observed accuracy 
+    to the expected accuracy, yielding a score between –1 and 1, where higher values indicate 
+    better-than-chance agreement. This metric is beneficial for multi-class problems as it 
+    penalizes models that merely capture the prevalence of the majority class. By adjusting 
+    for chance, Cohen’s Kappa provides a more nuanced evaluation than raw accuracy.
+    '''
+    def __init__(self):
+        self._name = "cohen_kappa"
+        self._maximize = True  # maximize agreement
+    def __call__(self, y_true, y_score):
+        y_pred = np.argmax(y_score, axis=1)
+        return cohen_kappa_score(y_true, y_pred)
+class PrecisionScoreMetric(Metric):
+    def __init__(self):
+        self._name = "PrecisionScore"
+        self._maximize = True
+
+    def __call__(self, y_true, y_pred):
+        y_pred_labels = np.argmax(y_pred, axis=1)
+        return precision_score(y_true, y_pred_labels, average="macro", zero_division=0)
+
+class RecallScoreMetric(Metric):
+    def __init__(self):
+        self._name = "RecallScore"
+        self._maximize = True
+
+    def __call__(self, y_true, y_pred):
+        y_pred_labels = np.argmax(y_pred, axis=1)
+        return recall_score(y_true, y_pred_labels, average="macro", zero_division=0)
+
+class F1ScoreMetric(Metric):
+    def __init__(self):
+        self._name = "F1Score"
+        self._maximize = True
+
+    def __call__(self, y_true, y_pred):
+        # y_pred is assumed to be an array of probabilities. Get predicted labels:
+        y_pred_labels = np.argmax(y_pred, axis=1)
+        return f1_score(y_true, y_pred_labels)
 # ==================================
 # Scripting Functions
 # ==================================
@@ -62,7 +159,7 @@ def train(df, model, encoders, feature_cols, target_col):
     model.fit(
         X_train, y_train,
         eval_set=[(X_valid, y_valid)],
-        eval_metric=['accuracy'],
+        eval_metric=[MacroF1, RecallScoreMetric, PrecisionScoreMetric, MCC, CohenKappa],
         max_epochs=100,
         patience=10,
         batch_size=256,
@@ -177,6 +274,64 @@ def predict(pitcher, batter, model, scaler, encoders, df, feature_cols, target_c
     
     return best_pitch, results_df
 
+def predict_single_pitch(
+    pitcher_id: float,
+    batter_id: float,
+    pitch_type: str,
+    model,              # your TabNetClassifier
+    scaler,             # your TabNet scaler
+    encoders,           # your TabNet encoders
+    df_tabnet: pd.DataFrame,
+    feature_cols: list,
+    target_col: str
+):
+    """
+    Computes the average predicted probabilities for ONE forced pitch_type
+    across all rows matching (pitcher_id, batter_id) in df_tabnet.
+    
+    Returns:
+      Dictionary of average probabilities {class_name: avg_prob},
+      or None if no data found.
+    """
+    # Filter data for this pitcher
+    pitcher_df = df_tabnet[df_tabnet["PitcherId"] == pitcher_id].copy()
+    if pitcher_df.empty:
+        print(f"[TabNet] No data found for Pitcher {pitcher_id}.")
+        return None
+
+    # If there's matchup data for (pitcher, batter), use that. Otherwise, pitcher-level data
+    matchup_df = pitcher_df[pitcher_df["BatterId"] == batter_id].copy()
+    if matchup_df.empty:
+        # fallback
+        print(f"[TabNet] No matchup data for Pitcher {pitcher_id}, Batter {batter_id}; using all pitcher data.")
+        matchup_df = pitcher_df
+
+    # Force the pitch
+    if "CleanPitchType" in matchup_df.columns:
+        matchup_df["CleanPitchType"] = pitch_type
+    else:
+        print("[TabNet] 'CleanPitchType' column missing in df_tabnet. Aborting.")
+        return None
+
+    # Encode any categorical columns
+    for col, encoder in encoders.items():
+        if col in matchup_df.columns:
+            matchup_df[col] = matchup_df[col].astype(str)
+            matchup_df[col] = encoder.transform(matchup_df[col])
+
+    # Scale features
+    X_sim = matchup_df[feature_cols].values
+    X_sim_scaled = scaler.transform(X_sim)
+
+    # Predict probabilities for each row, then average
+    proba = model.predict_proba(X_sim_scaled)
+    avg_proba = proba.mean(axis=0)  # shape = (n_classes,)
+
+    # Get class names from encoders[target_col]
+    class_labels = encoders[target_col].classes_  # e.g. ["Ball", "Strike", ...]
+    prob_dict = {cls: p for cls, p in zip(class_labels, avg_proba)}
+
+    return prob_dict
 # =====================================
 # Director Function
 # =====================================
@@ -236,6 +391,22 @@ def model_train(data_path="data.parquet"):
     
     scores = validate(model, X_valid, y_valid)
     
+    # Define the paths to save each object.
+    TABNET_MODEL_ZIP    = "Derived_Data/model_params/"   # TabNet model
+    TABNET_SCALER_ZIP   = "Derived_Data/extra/"
+    TABNET_ENCODERS_ZIP = "Derived_Data/extra/"
+    TABNET_FEATS_ZIP    = "Derived_Data/extra/"
+    TABNET_TARGET_ZIP   = "Derived_Data/extra/"
+    TABNET_DATA_ZIP     = "Derived_Data/extra/"
+
+    # Save each object as a zip-compressed pickle file.
+    save_pickle_zip(model, TABNET_MODEL_ZIP, "cls_model.pkl.zip")
+    save_pickle_zip(scaler, TABNET_SCALER_ZIP, "cls_scaler.pkl.zip")
+    save_pickle_zip(encoders, TABNET_ENCODERS_ZIP, "encoders.pkl.zip")
+    save_pickle_zip(feature_cols, TABNET_FEATS_ZIP, "feature_cols_cls.pkl.zip")
+    save_pickle_zip(target_col, TABNET_TARGET_ZIP, "target_col.pkl.zip")
+    save_pickle_zip(df, TABNET_DATA_ZIP, "df_cls.pkl.zip")
+    
     return model, scaler, encoders, feature_cols, target_col, df, scores
 
 # =====================================
@@ -243,7 +414,7 @@ def model_train(data_path="data.parquet"):
 # =====================================
 if __name__ == "__main__":
     data_path = "Derived_Data/feature/nDate_feature.parquet"  
-    model, scaler, encoders, feature_cols, target_col, df = model_train(data_path=data_path)
+    model, scaler, encoders, feature_cols, target_col, df, scores = model_train(data_path=data_path)
     
     if model is not None:
         # Replace these with actual PitcherId and BatterId values from your data.

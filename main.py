@@ -31,3 +31,6 @@ logging.info("Batter Recommended Pitch: %s", rec_pitch)
 
 next_pitches = simulate_next_pitches(game_state, pretrained_model, mdp_policy, mdp, df_features, n=10)
 logging.info("Simulated next pitches: %s", next_pitches)
+print(f"\n\n\n=================================================================================================================================================================================\n\n\n")
+print(f"\t\t\t{next_pitches}")
+print(f"\n\n\n=================================================================================================================================================================================")
