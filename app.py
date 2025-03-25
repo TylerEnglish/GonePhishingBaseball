@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import numpy as np
-from Scripts.ML_Pipe.Base_Models.base_director import predict
+# from Scripts.ML_Pipe.Base_Models.base_director import predict
+from Scripts.ML_Pipe.ml_director import predict_sequence, predict
 
 st.set_page_config(
     page_title="Pioneer League Machine Learning Group",
@@ -101,20 +102,7 @@ with home:
         "Data-driven approaches are transforming baseball. From sabermetrics to real-time game insights, teams that embrace analytics gain a competitive edge.\
         By applying our nested machine learning model, we can help optimize performance for pitchers so that their team can get back in the batter's box and scoring runs."
     )
-    st.markdown("### Machine Learning: Models and Validation Metrics")
-    st.markdown("""
-                * Models that we used include: **XGBoost**, **TabNet**, and **PyCaret**
-                    * We originally planned on using TabNet for both the regression and categorization of our nested model;\
-                      however that was not the case. We ended up running PyCaret to see which model best fit our data and chose XGBoost for the regression model.
-                * For the classification model with TabNet we used **accuracy**, **F1**, and **precision**.
-                    * We decided to use accuracy as a typical metric, along with F1 as a good metric for balance between precision and recall,\
-                      and precision, specifically, since we are being most cautious with false positives for this model since we don't want to\
-                      expect to have an out or strike and get a ball in play or worse a homerun. 
-                """)
 
-with ml:
-    # File uploader
-    st.title("Machine Learning")
     col1, col2 = st.columns(2)
 
     with col1:
@@ -148,71 +136,184 @@ with ml:
         score.columns = ["Accuracy", "F1", "Precision"]
         st.markdown(score.style.hide(axis="index").to_html(), unsafe_allow_html=True)
 
+    st.markdown("### Machine Learning: Models and Validation Metrics")
+    st.markdown("""
+                * Models that we used include: **XGBoost**, **TabNet**, and **PyCaret**
+                    * We originally planned on using TabNet for both the regression and categorization of our nested model;\
+                      however that was not the case. We ended up running PyCaret to see which model best fit our data and chose XGBoost for the regression model.
+                * For the classification model with TabNet we used **accuracy**, **F1**, and **precision**.
+                    * We decided to use accuracy as a typical metric, along with F1 as a good metric for balance between precision and recall,\
+                      and precision, specifically, since we are being most cautious with false positives for this model since we don't want to\
+                      expect to have an out or strike and get a ball in play or worse a homerun. 
+                """)
+
+with ml:
+    # File uploader
+    st.title("Machine Learning")
+
 
     team = list(pitcher_batter_data["TeamName"].unique())
 
     team.sort()
-    # Dropdown menu with default set to 'IDA_CHU'
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        pitcher_team = st.selectbox(
-            "Select the Pitcher's Team",
-            options=team,
-            index=list(team).index("Idaho Falls Chukars"),  # Set default to 'IDA_CHU'
-        )
-        pitcher = list(pitcher_batter_data[pitcher_batter_data["TeamName"] == pitcher_team]["PitcherId"].unique())
-        pitcher = [None] + pitcher
-
-        pitcher_id = st.selectbox(
-            "Select a Pitcher (curr. ID can be full name)",
-            options=pitcher,
-            index=None,
-        )
-
-    # Dropdown menu with default set to 'IDA_CHU'
-    with col3:
-        batter_team = st.selectbox(
-            "Select the Batter's Team",
-            options=team,
-            index=list(team).index("Boise Hawks"),  # Set default to 'Boise Hawks'
-        )
-        batters = list(pitcher_batter_data[pitcher_batter_data["TeamName"] == batter_team]["BatterId"].unique())
-        batters = [None] + batters
-
-        batter_id = st.selectbox(
-            "Select a Batter (curr. ID can be full name)",
-            options=batters,
-            index=None,
-        )
 
 
-    if batter_id is not None and pitcher_id is not None:
-        predictions = predict(pitcher_id, batter_id)
+    # Initialize session state for expander
+    if "expander_open" not in st.session_state:
+        st.session_state.expander_open = True  # Initially expanded
 
-        cls_pred = f"Derived_Data/model_pred/cls_prediction_report_{int(pitcher_id)}_{int(batter_id)}.csv"
-        reg_pred = f"Derived_Data/model_pred/reg_prediction_report_{int(pitcher_id)}_{int(batter_id)}.csv"
+    # Function to collapse the expander
+    def collapse_expander():
+        st.session_state.expander_open = False
         
-        reg = pd.read_csv(reg_pred)[["RegressionPrediction"]]
-        cls = pd.read_csv(cls_pred)
-        
-        if type(reg.iloc[0, reg.columns.get_loc("RegressionPrediction")]) is np.int64:
-            r = range(1,int(reg["RegressionPrediction"].iloc[:1])+1)
-            cls2 = cls.loc[cls["PitchNumber"].isin(r)].groupby(["PitchNumber", "RecommendedPitch"]).agg({"Strike":"sum"}).reset_index()
-        else:
-            r = range(1,11)
-            cls2 = cls.loc[cls["PitchNumber"].isin(r)].groupby(["PitchNumber", "RecommendedPitch"]).agg({"Strike":"sum"}).reset_index()
-        
-        cls2 = cls2[["PitchNumber", "RecommendedPitch"]]
-        cls4 = cls[["PitchNumber", "RecommendedPitch", "Ball", "Hit", "Strike", "Undefined", "Walk"]].groupby(["PitchNumber", "RecommendedPitch"]).agg({"Ball":"mean", "Hit":"mean", "Strike":"mean", "Undefined":"mean", "Walk":"mean"}).reset_index()
-        cls4["Ball"] = np.round(cls4["Ball"],2).astype(str)+"%"
-        cls4["Hit"] = np.round(cls4["Hit"],2).astype(str)+"%"
-        cls4["Strike"] = np.round(cls4["Strike"],2).astype(str)+"%"
-        cls4["Undefined"] = np.round(cls4["Undefined"],2).astype(str)+"%"
-        cls4["Walk"] = np.round(cls4["Walk"],2).astype(str)+"%"
+    with st.expander("Selections", expanded=st.session_state.expander_open):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            pitcher_team = st.selectbox(
+                "Select the Pitcher's Team",
+                options=team,
+                index=list(team).index("Idaho Falls Chukars"),  # Set default to 'IDA_CHU'
+            )
+            pitcher = list(pitcher_batter_data[pitcher_batter_data["TeamName"] == pitcher_team]["PitcherId"].unique())
+            pitcher = [None] + pitcher
 
-        st.table(cls2)
-        st.table(cls4)
+            pitcher_id = st.selectbox(
+                "Select Pitcher (curr. ID can be full name)",
+                options=pitcher,
+                index=None,
+            )
+        with col2:
+            # Add custom CSS to style the Streamlit button
+            st.markdown("""
+                <style>
+                /* Styling the button */
+                div.stButton > button {
+                    display: block;
+                    margin-left: auto;
+                    margin-right: auto;
+                    background-color: lightgray;  /* Light gray background */
+                    color: black;  /* Black text for contrast */
+                    border: 4px solid darkblue;  /* Dark blue border */
+                    border-radius: 5px;  /* Rounded corners */
+                    font-size: 16px;
+                    padding: 10px 20px;
+                    margin-top: 20%;  /* Shift button down by 20% of the screen height */
+                }
+
+                /* Hover effect */
+                div.stButton > button:hover {
+                    background-color: #D3D3D3;  /* Slightly darker gray when hovered */
+                }
+                </style>
+            """, unsafe_allow_html=True)
+
+            # Streamlit button
+            but = st.button("Start Model")
+        # Dropdown menu with default set to 'IDA_CHU'
+        with col3:
+            batter_team = st.selectbox(
+                "Select the Batter's Team",
+                options=team,
+                index=list(team).index("Boise Hawks"),  # Set default to 'Boise Hawks'
+            )
+            batters = list(pitcher_batter_data[pitcher_batter_data["TeamName"] == batter_team]["BatterId"].unique())
+            batters = [None] + batters
+
+            batter_id = st.selectbox(
+                "Select Batter (curr. ID can be full name)",
+                options=batters,
+                index=None,
+            )
+
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            num_of_strikes = st.number_input(
+                        "Number of Strikes",
+                        min_value=0,
+                        max_value=2,
+                        value=0,
+                        step=1,
+                        format="%d",
+                    )
+        with col2:
+            num_of_balls = st.number_input(
+                        "Number of Balls",
+                        min_value=0,
+                        max_value=3,
+                        value=0,
+                        step=1,
+                        format="%d",
+                    )
+        with col3:
+            num_of_outs = st.number_input(
+                        "Number of Outs",
+                        min_value=0,
+                        max_value=2,
+                        value=0,
+                        step=1,
+                        format="%d",
+                    )
+        with col4:
+            num_of_innings = st.number_input(
+                        "The Current Inning",
+                        min_value=1,
+                        max_value=12,
+                        value=1,
+                        step=1,
+                        format="%d",
+                    )
+    bool_button = False
+    if not st.session_state.expander_open:
+        bool_button = True
+    if batter_id is not None and pitcher_id is not None and num_of_strikes is not None and num_of_balls is not None and num_of_outs is not None and num_of_innings is not None and (but or bool_button):
+
+        if st.session_state.expander_open:
+            collapse_expander()
+            st.rerun()
+        st.session_state.expander_open = True
+        st.markdown(
+            """
+            <div style="text-align: center;">
+                <h3>Pitch Sequence Results</h3>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.text("")
+        df = predict(pitcher_id, batter_id, str(num_of_strikes)+"-"+str(num_of_balls), num_of_outs, num_of_innings)
+        # cls_pred = f"Derived_Data/model_pred/cls_prediction_report_{int(pitcher_id)}_{int(batter_id)}.csv"
+        # reg_pred = f"Derived_Data/model_pred/reg_prediction_report_{int(pitcher_id)}_{int(batter_id)}.csv"
+        
+        # reg = pd.read_csv(reg_pred)[["RegressionPrediction"]]
+        # cls = pd.read_csv(cls_pred)
+
+        # st.dataframe(predictions[["PitchNumber", "Pitch"]])
+        # probs = ""
+        for idx, row in df.iterrows():
+            st.markdown(f"##### **Pitch {row['PitchNumber']}**: _{row['Pitch']}_")
+            if row['Probabilities'] is not None:
+                probs = pd.DataFrame([row["Probabilities"]]).reset_index(drop=True)
+                st.dataframe(probs, hide_index=True, use_container_width=True)
+            else:
+                st.markdown("### No probability data.")
+        bool_button = False
+
+        # if type(reg.iloc[0, reg.columns.get_loc("RegressionPrediction")]) is np.int64:
+        #     r = range(1,int(reg["RegressionPrediction"].iloc[:1])+1)
+        #     cls2 = cls.loc[cls["PitchNumber"].isin(r)].groupby(["PitchNumber", "RecommendedPitch"]).agg({"Strike":"sum"}).reset_index()
+        # else:
+        #     r = range(1,11)
+        #     cls2 = cls.loc[cls["PitchNumber"].isin(r)].groupby(["PitchNumber", "RecommendedPitch"]).agg({"Strike":"sum"}).reset_index()
+        
+        # cls2 = cls[["PitchNumber", "RecommendedPitch"]]
+        # cls4 = cls[["PitchNumber", "RecommendedPitch", "Ball", "Hit", "Strike", "Undefined", "Walk"]].groupby(["PitchNumber", "RecommendedPitch"]).agg({"Ball":"mean", "Hit":"mean", "Strike":"mean", "Undefined":"mean", "Walk":"mean"}).reset_index()
+        # cls4["Ball"] = np.round(cls4["Ball"],2).astype(str)+"%"
+        # cls4["Hit"] = np.round(cls4["Hit"],2).astype(str)+"%"
+        # cls4["Strike"] = np.round(cls4["Strike"],2).astype(str)+"%"
+        # cls4["Undefined"] = np.round(cls4["Undefined"],2).astype(str)+"%"
+        # cls4["Walk"] = np.round(cls4["Walk"],2).astype(str)+"%"
+
+        # st.table(cls2)
+        # st.table(cls4)
 
 
 with outs:

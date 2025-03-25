@@ -173,7 +173,7 @@ def predict(
         predicted_n = predict_reg(pitcher=pitcher_id, batter=batter_id,
                                    model=reg_model, scaler=reg_scaler, df=df_reg_data)
         if not isinstance(predicted_n, int) or predicted_n < 1:
-            predicted_n = 1
+            predicted_n = 10
     logging.info(f"[Regression] Simulating {predicted_n} pitch(es).")
 
     # C) Load MDP-based pipeline from zip.
