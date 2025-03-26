@@ -109,7 +109,7 @@ with home:
         st.markdown(
             """
             <div style="text-align: left; margin-right: 25%;">
-                <h4>Starting Metrics</h4>
+                <h4>Starting Scoring Metrics</h4>
             </div>
             """,
             unsafe_allow_html=True,
@@ -124,7 +124,7 @@ with home:
         st.markdown(
             """
             <div style="text-align: left; margin-right: 25%;">
-                <h4>Best Metrics Achieved</h4>
+                <h4>Best Scoring Metrics Achieved</h4>
             </div>
             """,
             unsafe_allow_html=True,
@@ -136,15 +136,37 @@ with home:
         score.columns = ["Accuracy", "F1", "Precision"]
         st.markdown(score.style.hide(axis="index").to_html(), unsafe_allow_html=True)
 
+    # st.markdown("### Machine Learning: Models and Validation Metrics")
+    # st.markdown("""
+    #             * Models that we used include: **XGBoost**, **TabNet**, and **PyCaret**
+    #                 * We originally planned on using TabNet for both the regression and categorization of our nested model;\
+    #                   however that was not the case. We ended up running PyCaret to see which model best fit our data and chose XGBoost for the regression model.
+    #             * For the classification model with TabNet we used **accuracy**, **F1**, and **precision**.
+    #                 * We decided to use accuracy as a typical metric, along with F1 as a good metric for balance between precision and recall,\
+    #                   and precision, specifically, since we are being most cautious with false positives for this model since we don't want to\
+    #                   expect to have an out or strike and get a ball in play or worse a homerun. 
+    #             """)
     st.markdown("### Machine Learning: Models and Validation Metrics")
     st.markdown("""
-                * Models that we used include: **XGBoost**, **TabNet**, and **PyCaret**
+                * For Regression we tried **Pycaret**, **TabnetRegressor**, and **XgBoost**. Ended up with **XgBoost**.
                     * We originally planned on using TabNet for both the regression and categorization of our nested model;\
-                      however that was not the case. We ended up running PyCaret to see which model best fit our data and chose XGBoost for the regression model.
-                * For the classification model with TabNet we used **accuracy**, **F1**, and **precision**.
+                        however, that was not the case. We ended up running PyCaret to see which model best fit our data and\
+                        chose XGBoost for the regression model.
+                * For the Recommendation System, it was **RandomforestClassifier** and **Markov Decision Process**.
+                    * The Random Forest model was trained to predict pitch types using in-game info like count, pitch speed\
+                    , spin rate, and pitcher/batter handedness. It gives a probability for each possible pitch. These predictions\
+                    are then combined with a Markov Decision Process (MDP), which uses past pitch sequences to figure out the best\
+                    pitch to throw in a given situation. The final pitch recommendation is based on both the model's predictions\
+                    and the MDP's strategy, with a bit of randomness added to keep things flexible and realistic.
+                * For the Scoring we used **TabnetClassifier**.
                     * We decided to use accuracy as a typical metric, along with F1 as a good metric for balance between precision and recall,\
                       and precision, specifically, since we are being most cautious with false positives for this model since we don't want to\
                       expect to have an out or strike and get a ball in play or worse a homerun. 
+                
+                The nested framework follows a structured pipeline: **Regression Model -> Recommendation System -> Scoring Model**.\
+                First, the regression model predicts how many pitches a pitcher is likely to throw. Then, the recommendation system\
+                suggests the best pitch to throw next based on the current game situation. Finally, the scoring model evaluates how\
+                good that recommended pitch is by scoring each suggestion using a classification model.
                 """)
 
 with ml:

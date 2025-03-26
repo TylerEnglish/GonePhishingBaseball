@@ -6,11 +6,14 @@ import logging
 import gc
 from joblib import dump, load
 
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split, GridSearchCV, RandomizedSearchCV
+from sklearn.ensemble import RandomForestClassifier, StackingClassifier, HistGradientBoostingClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, PolynomialFeatures
 from sklearn.metrics import classification_report, precision_score, recall_score, f1_score
+from sklearn.decomposition import PCA
+from sklearn.linear_model import LogisticRegression
+from scipy.stats import randint, loguniform
 
 import zipfile
 # Setup logging
@@ -211,19 +214,6 @@ def train_supervised_model(features, labels):
     The pipeline's final step is named 'rf' to be consistent with existing code references.
     """
 
-    import time
-    import gc
-    import logging
-
-    from sklearn.model_selection import train_test_split, RandomizedSearchCV
-    from sklearn.pipeline import Pipeline
-    from sklearn.preprocessing import StandardScaler
-    from sklearn.decomposition import PCA
-    from sklearn.ensemble import StackingClassifier, HistGradientBoostingClassifier, RandomForestClassifier
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.metrics import classification_report, precision_score, recall_score, f1_score
-    from scipy.stats import randint, loguniform
-
     logging.info("Starting supervised model training with a stacking ensemble...")
     start_time = time.time()
 
@@ -273,7 +263,7 @@ def train_supervised_model(features, labels):
     stack_clf = StackingClassifier(
         estimators=base_learners,
         final_estimator=meta_learner,
-        passthrough=True,    # meta-learner sees base predictions + original features
+        passthrough=True, 
         n_jobs=-1
     )
 
@@ -284,7 +274,7 @@ def train_supervised_model(features, labels):
     pipeline = Pipeline([
         ('scaler', StandardScaler()),
         ('pca', PCA()),
-        ('rf', stack_clf)  # named 'rf' for compatibility with your existing code
+        ('rf', stack_clf)
     ])
 
     # --------------------------------------------------

@@ -32,7 +32,7 @@ if __name__ == "__main__":
     Leave out regression
     '''
     df = predict(
-        pitcher_id=1000066910.0,
+        pitcher_id=1000066910,
         batter_id=1000032366.0,
         count="2-1",
         outs=2,
@@ -54,8 +54,8 @@ if __name__ == "__main__":
     '''
     # Recommend-only sequence.
     seq = predict_sequence(
-        pitcher_id=1000066910.0,
-        batter_id=1000032366.0,
+        pitcher_id=1000066910,
+        batter_id=1000032366,
         count="3-2",
         outs=2,
         inning=8,

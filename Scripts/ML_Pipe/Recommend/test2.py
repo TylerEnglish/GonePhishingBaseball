@@ -10,7 +10,11 @@ from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, PolynomialFeatures
-from sklearn.metrics import classification_report, precision_score, recall_score, f1_score
+from sklearn.metrics import accuracy_score, classification_report, precision_score, recall_score, f1_score
+from sklearn.base import BaseEstimator, ClassifierMixin
+
+# AutoGluon
+from autogluon.tabular import TabularDataset, TabularPredictor
 
 import zipfile
 # Setup logging
@@ -199,113 +203,10 @@ def get_pitcher_arsenal(df, pitcher_id):
     arsenal = df[df['pitcher_id'] == pitcher_id]['cleanpitchtype'].unique().tolist()
     _pitcher_arsenal_cache[pitcher_id] = arsenal
     return arsenal
-
-def train_supervised_model(features, labels):
-    """
-    Uses AutoGluon from Amazon as a 'better backend' for powerful automatic ensembling
-    (XGBoost, CatBoost, LightGBM, neural nets, etc.),
-    then wraps it in a scikit-like interface so your MDP logic remains unchanged.
-
-    Returns a scikit Pipeline with final step named 'rf' that internally calls AutoGluon.
-    """
-
-    import os
-    import time
-    import gc
-    import logging
-
-    import numpy as np
-    import pandas as pd
-
-    from sklearn.base import BaseEstimator, ClassifierMixin
-    from sklearn.pipeline import Pipeline
-    from sklearn.model_selection import train_test_split
-    from sklearn.preprocessing import StandardScaler
-
-    from sklearn.metrics import (
-        classification_report,
-        precision_score,
-        recall_score,
-        f1_score
-    )
-
-    # AutoGluon
-    from autogluon.tabular import TabularDataset, TabularPredictor
-
-    logging.info("Starting advanced AutoGluon-based training (better backend).")
-    start_time = time.time()
-
-    # Convert your (features, labels) to a DataFrame that AutoGluon can read
-    # We'll assume labels is a single Series or array
-    df_ag = pd.DataFrame(features.copy())
-    df_ag['target'] = labels.values
-
-    # Split for validation metrics, but note AutoGluon also does an internal validation.
-    label_counts = labels.value_counts()
-    stratify_val = labels if label_counts.min() >= 2 else None
-    X_train, X_test = train_test_split(
-        df_ag,
-        test_size=0.2,
-        random_state=42,
-        stratify=stratify_val
-    )
-    logging.info(f"Train shape: {X_train.shape}, Test shape: {X_test.shape}")
-
-    # Convert to AutoGluon format
-    train_data = TabularDataset(X_train)
-    test_data = TabularDataset(X_test)
-    label_col = 'target'
-
-    # -------------------------
-    # 1) AutoGluon Training
-    # -------------------------
-    # The "predictor" is an AutoGluon ensemble of multiple strong models.
-    # It's advanced enough to do hyperparameter tuning, stack models, etc.
-    save_dir = 'autogluon_models'
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir, exist_ok=True)
-
-    predictor = TabularPredictor(
-        label=label_col,
-        eval_metric='f1_weighted',  # or 'accuracy', etc.
-        path=save_dir
-    ).fit(
-        train_data=train_data,
-        time_limit=600,  # up to 10 minutes, adjust if you have more time
-        presets='medium_quality_faster_train',  # or 'high_quality' if you have time
-        verbosity=2
-    )
-
-    # Evaluate on test_data
-    leaderboard = predictor.leaderboard(test_data, silent=True)
-    logging.info(f"AutoGluon leaderboard:\n{leaderboard}")
-
-    # We'll measure accuracy, precision, recall, f1 via scikit
-    y_test_true = test_data[label_col]
-    y_test_pred = predictor.predict(test_data)
-    from sklearn.metrics import (
-        accuracy_score,
-        precision_score,
-        recall_score,
-        f1_score,
-        classification_report
-    )
-    test_acc = accuracy_score(y_test_true, y_test_pred)
-    p_ = precision_score(y_test_true, y_test_pred, average='weighted', zero_division=0)
-    r_ = recall_score(y_test_true, y_test_pred, average='weighted', zero_division=0)
-    f_ = f1_score(y_test_true, y_test_pred, average='weighted', zero_division=0)
-    logging.info(f"AutoGluon test accuracy: {test_acc:.3f}")
-    logging.info(f"Precision: {p_:.3f}, Recall: {r_:.3f}, F1: {f_:.3f}")
-    logging.info(f"Classification Report:\n{classification_report(y_test_true, y_test_pred)}")
-
-    elapsed = time.time() - start_time
-    logging.info(f"AutoGluon ensemble training finished in {elapsed:.2f} sec.")
-
-
-    # -------------------------
-    # 2) Wrap the predictor in a scikit-like class
-    # -------------------------
-    class AutoGluonModel(BaseEstimator, ClassifierMixin):
+#====================
+# AutoGluon Model
+#====================
+class AutoGluonModel(BaseEstimator, ClassifierMixin):
         """
         A lightweight scikit-learn wrapper for the trained AutoGluon predictor.
         This ensures your pipeline step is scikit-compatible, with .fit(), .predict(), .predict_proba().
@@ -343,23 +244,17 @@ def train_supervised_model(features, labels):
             raw_proba = self.predictor.predict_proba(df)
 
             # AutoGluon returns columns named by the class. Let's reorder them to match self._classes
-            # Convert to DataFrame for safe alignment
             proba_df = pd.DataFrame(raw_proba)
             # If classes in columns are not numeric, we might reorder
-            # Typically proba_df columns are sorted by class, let's ensure
             col_order = sorted(proba_df.columns)
             proba_df = proba_df[col_order]
 
             # Ensure we reorder to match self._classes exactly
-            # (best to keep consistent class ordering as discovered in self._classes)
-            # We handle the case if self._classes is string/categorical
             class_list = list(self._classes)
-            # For safety, let's try to map them in sorted fashion
-            # If there's a mismatch, we might do a fallback or raise a warning
-            # We'll assume col_order matches class_list sorted
+
             if sorted(class_list) != col_order:
                 logging.warning("Mismatch in class ordering between self._classes and AutoGluon output. Attempting alignment.")
-                # This part can get tricky if labels differ. We'll do a simple approach:
+                # This part can get tricky if labels differ
                 class_list = col_order  # override
                 self._classes = np.array(col_order)
 
@@ -374,12 +269,78 @@ def train_supervised_model(features, labels):
             """
             return self._classes if self._classes is not None else []
 
+def train_supervised_model(features, labels):
+    """
+    Uses AutoGluon from Amazon as a 'better backend' for powerful automatic ensembling
+    (XGBoost, CatBoost, LightGBM, neural nets, etc.),
+    then wraps it in a scikit-like interface so your MDP logic remains unchanged.
+
+    Returns a scikit Pipeline with final step named 'rf' that internally calls AutoGluon.
+    """
+
+    logging.info("Starting advanced AutoGluon-based training (better backend).")
+    start_time = time.time()
+
+    # Convert your (features, labels) to a DataFrame that AutoGluon can read
+    df_ag = pd.DataFrame(features.copy())
+    df_ag['target'] = labels.values
+
+    # Split for validation metrics (AutoGluon does internal validation)
+    label_counts = labels.value_counts()
+    stratify_val = labels if label_counts.min() >= 2 else None
+    X_train, X_test = train_test_split(
+        df_ag,
+        test_size=0.2,
+        random_state=42,
+        stratify=stratify_val
+    )
+    logging.info(f"Train shape: {X_train.shape}, Test shape: {X_test.shape}")
+
+    # Convert to AutoGluon format
+    train_data = TabularDataset(X_train)
+    test_data = TabularDataset(X_test)
+    label_col = 'target'
+
     # -------------------------
-    # 3) Build a scikit pipeline with final step named 'rf'
+    # 1) AutoGluon Training
     # -------------------------
-    # We'll add a simple scaler step to mirror your existing structure,
-    # though it's not strictly needed since AutoGluon does its own preprocessing.
-    # This is mostly for MDP code references that might expect pipeline steps.
+    # The "predictor" is an AutoGluon ensemble of multiple strong models.
+    save_dir = 'autogluon_models'
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir, exist_ok=True)
+
+    predictor = TabularPredictor(
+        label=label_col,
+        eval_metric='f1_weighted',  # or 'accuracy'
+        path=save_dir
+    ).fit(
+        train_data=train_data,
+        time_limit=600,                         # up to 10 minutes, adjust if you have more time
+        presets='medium_quality_faster_train',  # or 'high_quality' if you have time
+        verbosity=2
+    )
+
+    # Evaluate on test_data
+    leaderboard = predictor.leaderboard(test_data, silent=True)
+    logging.info(f"AutoGluon leaderboard:\n{leaderboard}")
+
+    # We'll measure accuracy, precision, recall, f1 via scikit
+    y_test_true = test_data[label_col]
+    y_test_pred = predictor.predict(test_data)
+    test_acc = accuracy_score(y_test_true, y_test_pred)
+    p_ = precision_score(y_test_true, y_test_pred, average='weighted', zero_division=0)
+    r_ = recall_score(y_test_true, y_test_pred, average='weighted', zero_division=0)
+    f_ = f1_score(y_test_true, y_test_pred, average='weighted', zero_division=0)
+    logging.info(f"AutoGluon test accuracy: {test_acc:.3f}")
+    logging.info(f"Precision: {p_:.3f}, Recall: {r_:.3f}, F1: {f_:.3f}")
+    logging.info(f"Classification Report:\n{classification_report(y_test_true, y_test_pred)}")
+
+    elapsed = time.time() - start_time
+    logging.info(f"AutoGluon ensemble training finished in {elapsed:.2f} sec.")
+
+    # -------------------------
+    # Build a scikit pipeline with final step named 'rf'
+    # -------------------------
     from sklearn.pipeline import Pipeline
 
     final_pipeline = Pipeline([
