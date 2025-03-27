@@ -1,7 +1,7 @@
 from Scripts.ML_Pipe.Recommend.test2 import *
 
 if __name__ == '__main__':
-    # main()
+    main()
     # Or, to load a saved model and run a prediction example:
     df_raw = load_data("Derived_Data/feature/feature_20250301_105232.parquet")
     df_features = compute_features(df_raw)

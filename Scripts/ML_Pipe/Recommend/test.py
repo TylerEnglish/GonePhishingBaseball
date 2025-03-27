@@ -2,59 +2,62 @@ import os
 import time
 import pandas as pd
 import numpy as np
+import json
 import logging
 import gc
 from joblib import dump, load
-
-from sklearn.model_selection import train_test_split, GridSearchCV, RandomizedSearchCV
-from sklearn.ensemble import RandomForestClassifier, StackingClassifier, HistGradientBoostingClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, classification_report, precision_score, recall_score, f1_score
+from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler, PolynomialFeatures
-from sklearn.metrics import classification_report, precision_score, recall_score, f1_score
-from sklearn.decomposition import PCA
-from sklearn.linear_model import LogisticRegression
-from scipy.stats import randint, loguniform
+# AutoGluon
+from autogluon.tabular import TabularDataset, TabularPredictor
 
 import zipfile
+
 # Setup logging
 logging.basicConfig(level=logging.INFO)
-
-# Expanded feature list: additional metrics from the dataset
-MODEL_FEATURES = [
-    'balls', 'strikes', 'outs', 'inning', 'is_first_pitch',
-    'relspeed', 'spinrate', 'zonetime', 'avg_pitch_speed', 'avg_spin_rate',
-    'strike_percentage', 'ball_percentage', 'pitcher_throws_num', 'batterside_num',
-    'vertrelangle', 'horzrelangle', 'vertbreak', 'horzbreak', 'platelocheight', 'platelocside',
-    'effectivevelo', 'speeddrop', 'extension'
-]
 
 # ------ Recommendation Sampling Config ------
 EPSILON = 0.1        # Exploration chance
 TEMPERATURE = 1.0    # Softmax temperature scaling
-
+MODEL_FEATURES = []
 # Global cache for pitcher arsenal
 _pitcher_arsenal_cache = {}
+
+def fill_missing_features(game_state, full_feature_list, model_defaults):
+    """
+    Given a game state and the full feature list used during training,
+    return a DataFrame row that includes all required features.
+    Missing features are filled using model_defaults.
+    """
+    full_data = {col: model_defaults.get(col, 0) for col in full_feature_list}
+    full_data.update(game_state)
+    return pd.DataFrame([full_data], columns=full_feature_list)
 
 # ---------------- Memory Reduction Helper ----------------
 def reduce_memory_usage(df):
     """
     Downcasts numeric columns and converts object columns to categorical where beneficial.
+    Skips columns with zero rows.
     """
     for col in df.columns:
+        num_total_values = len(df[col])
+        if num_total_values == 0:
+            continue
         col_type = df[col].dtype
         if pd.api.types.is_numeric_dtype(col_type):
             df[col] = pd.to_numeric(df[col], downcast='float')
         elif pd.api.types.is_object_dtype(col_type):
             num_unique_values = df[col].nunique()
-            num_total_values = len(df[col])
-            if num_unique_values / num_total_values < 0.5:
+            if num_total_values > 0 and (num_unique_values / num_total_values) < 0.5:
                 df[col] = df[col].astype('category')
     return df
 
 # ---------------- Data Ingestion Module ----------------
 def load_data(file_path):
     """
-    Loads the data from a parquet file and applies memory reduction.
+    Loads the full dataset from a parquet file and applies memory reduction.
     """
     logging.info(f"Loading data from {file_path}")
     try:
@@ -74,6 +77,11 @@ def compute_features(df):
     logging.info("Computing and preprocessing features")
     df = df.copy(deep=True)
     df.columns = df.columns.str.lower()
+    # Drop datetime columns from the computed features
+    datetime_cols = [col for col in df.columns if pd.api.types.is_datetime64_any_dtype(df[col])]
+    if datetime_cols:
+        logging.info(f"Dropping datetime columns in compute_features: {datetime_cols}")
+        df = df.drop(columns=datetime_cols)
 
     # Rename common columns if needed
     if 'batterid' in df.columns and 'batter_id' not in df.columns:
@@ -135,7 +143,7 @@ def compute_features(df):
     else:
         df['prev_pitch'] = np.nan
 
-    # Fix for categorical fillna for prev_pitch.
+    # Fill missing prev_pitch values.
     if isinstance(df['prev_pitch'].dtype, pd.CategoricalDtype):
         df['prev_pitch'] = df['prev_pitch'].cat.add_categories("None").fillna("None")
     else:
@@ -170,13 +178,16 @@ def compute_features(df):
         else:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
     
+    # Remove duplicate rows.
     df.drop_duplicates(inplace=True)
-    df.dropna(subset=MODEL_FEATURES + ['cleanpitchtype'], inplace=True)
+    # Instead of dropping all rows with any NA, drop only rows missing essential columns.
+    essential_cols = ['cleanpitchtype']  # You can add more essential columns here if needed.
+    df.dropna(subset=essential_cols, inplace=True)
     
     # Only keep successful pitches for training.
     df = df[df['successful'] == 1].copy()
     
-    # Fix for "cleanpitchtype": if already categorical, add "Unknown" if missing before fillna.
+    # Fix for "cleanpitchtype": fill missing values and filter out "Unknown"
     if 'cleanpitchtype' in df.columns:
         if isinstance(df['cleanpitchtype'].dtype, pd.CategoricalDtype):
             if "Unknown" not in df['cleanpitchtype'].cat.categories:
@@ -190,6 +201,7 @@ def compute_features(df):
     
     df = df[df['target'] != "Unknown"].copy()
     df = reduce_memory_usage(df)
+    logging.info(f"Features computed: {df.shape[0]} rows, {df.shape[1]} columns")
     return df
 
 def get_pitcher_arsenal(df, pitcher_id):
@@ -203,150 +215,164 @@ def get_pitcher_arsenal(df, pitcher_id):
     _pitcher_arsenal_cache[pitcher_id] = arsenal
     return arsenal
 
+#====================
+# AutoGluon Model
+#====================
+class AutoGluonModel(BaseEstimator, ClassifierMixin):
+    """
+    A lightweight scikit-learn wrapper for the trained AutoGluon predictor.
+    """
+    def __init__(self, predictor=None, label_col='target'):
+        self.predictor = predictor
+        self.label_col = label_col
+        self._classes = None
+        # This attribute will store the list of feature names.
+        self.feature_names_in_ = []
+
+    def fit(self, X, y):
+        self._classes = np.unique(y)
+        return self
+
+    def predict(self, X):
+        df = TabularDataset(pd.DataFrame(X))
+        preds = self.predictor.predict(df)
+        return preds.values if hasattr(preds, 'values') else preds
+
+    def predict_proba(self, X):
+        df = TabularDataset(pd.DataFrame(X))
+        raw_proba = self.predictor.predict_proba(df)
+        proba_df = pd.DataFrame(raw_proba)
+        col_order = sorted(proba_df.columns)
+        proba_df = proba_df[col_order]
+        class_list = list(self._classes)
+        if sorted(class_list) != col_order:
+            logging.warning("Mismatch in class ordering between self._classes and AutoGluon output. Attempting alignment.")
+            class_list = col_order  # override
+            self._classes = np.array(col_order)
+        proba_array = proba_df.values
+        return proba_array
+
+    @property
+    def classes_(self):
+        return self._classes if self._classes is not None else []
+
 def train_supervised_model(features, labels):
-    """
-    Trains a stacking ensemble using:
-      - Pipeline steps: StandardScaler -> PCA -> StackingClassifier
-      - Base learners: HistGradientBoostingClassifier + RandomForestClassifier
-      - Meta learner: LogisticRegression
-    Tunes parameters via RandomizedSearchCV for better accuracy/recall/precision.
-
-    The pipeline's final step is named 'rf' to be consistent with existing code references.
-    """
-
-    logging.info("Starting supervised model training with a stacking ensemble...")
+    logging.info("Starting advanced AutoGluon-based training (better backend).")
     start_time = time.time()
 
-    # Check if we can stratify (only if all classes have at least 2 samples)
+    df_ag = pd.DataFrame(features.copy())
+    df_ag['target'] = labels.values
+
     label_counts = labels.value_counts()
     stratify_val = labels if label_counts.min() >= 2 else None
-    if stratify_val is None:
-        logging.warning("Some classes have fewer than 2 samples.")
-
-    # Train/test split
-    X_train, X_test, y_train, y_test = train_test_split(
-        features,
-        labels,
+    X_train, X_test = train_test_split(
+        df_ag,
         test_size=0.2,
         random_state=42,
         stratify=stratify_val
     )
+    logging.info(f"Train shape: {X_train.shape}, Test shape: {X_test.shape}")
 
-    # --------------------------------------------------
-    # 1) Define base learners and the meta-learner
-    # --------------------------------------------------
-    base_learners = [
-        (
-            "hist",
-            HistGradientBoostingClassifier(
-                random_state=42,
-                max_iter=100,                 # a decent baseline
-                class_weight="balanced"       # handle class imbalance if present
-            )
-        ),
-        (
-            "forest",
-            RandomForestClassifier(
-                random_state=42,
-                n_jobs=-1,
-                class_weight="balanced_subsample"
-            )
-        )
-    ]
-    meta_learner = LogisticRegression(random_state=42, class_weight="balanced", max_iter=1000)
+    train_data = TabularDataset(X_train)
+    test_data = TabularDataset(X_test)
+    label_col = 'target'
 
-    # --------------------------------------------------
-    # 2) StackingClassifier as the final pipeline step
-    #    named 'rf' so your recommendation code can do:
-    #    supervised_model.named_steps['rf'].predict_proba(...)
-    # --------------------------------------------------
-    stack_clf = StackingClassifier(
-        estimators=base_learners,
-        final_estimator=meta_learner,
-        passthrough=True, 
-        n_jobs=-1
+    save_dir = 'autogluon_models'
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir, exist_ok=True)
+
+    predictor = TabularPredictor(
+        label=label_col,
+        eval_metric='f1_weighted',
+        path=save_dir
+    ).fit(
+        train_data=train_data,
+        time_limit=3600*2,
+        presets='best_quality',
+        verbosity=2
     )
 
-    # --------------------------------------------------
-    # 3) Build the full pipeline
-    #    [Scaler -> PCA -> (Stacking Ensemble)]
-    # --------------------------------------------------
-    pipeline = Pipeline([
-        ('scaler', StandardScaler()),
-        ('pca', PCA()),
-        ('rf', stack_clf)
-    ])
+    leaderboard = predictor.leaderboard(test_data, silent=True)
+    logging.info(f"AutoGluon leaderboard:\n{leaderboard}")
 
-    # --------------------------------------------------
-    # 4) Define parameter distributions for RandomizedSearchCV
-    #    We can tune base learners + meta-learner + PCA
-    # --------------------------------------------------
-    param_distributions = {
-        # PCA dimension
-        'pca__n_components': randint(5, min(features.shape[1], 30)),
-
-        # HistGradientBoosting params (prefix "rf__hist__")
-        'rf__hist__learning_rate': [0.01, 0.05, 0.1],
-        'rf__hist__max_leaf_nodes': [15, 31, 63],
-        'rf__hist__max_depth': [3, 5, 10, None],
-
-        # RandomForest params (prefix "rf__forest__")
-        'rf__forest__n_estimators': [100, 200, 300],
-        'rf__forest__max_depth': [5, 10, 20, None],
-        'rf__forest__min_samples_leaf': [1, 2, 5],
-
-        # Meta-learner params (prefix "rf__final_estimator__")
-        'rf__final_estimator__C': loguniform(1e-3, 1e2),
-        'rf__final_estimator__solver': ['lbfgs', 'saga']
-    }
-
-    # --------------------------------------------------
-    # 5) RandomizedSearchCV for the pipeline
-    # --------------------------------------------------
-    random_search = RandomizedSearchCV(
-        estimator=pipeline,
-        param_distributions=param_distributions,
-        n_iter=20,               # try 20 random configs; can increase if resources allow
-        scoring='f1_weighted',   # optimize for balanced F1 across classes
-        n_jobs=-1,
-        cv=5,                    # 5-fold cross-validation
-        verbose=2,
-        random_state=42,
-        refit=True
-    )
-
-    random_search.fit(X_train, y_train)
-    best_model = random_search.best_estimator_
-
-    # Evaluate the best model
-    train_acc = best_model.score(X_train, y_train)
-    test_acc = best_model.score(X_test, y_test)
-    y_pred = best_model.predict(X_test)
-
-    # Classification metrics
-    precision = precision_score(y_test, y_pred, average='weighted', zero_division=0)
-    recall = recall_score(y_test, y_pred, average='weighted', zero_division=0)
-    f1 = f1_score(y_test, y_pred, average='weighted', zero_division=0)
-    report = classification_report(y_test, y_pred)
+    y_test_true = test_data[label_col]
+    y_test_pred = predictor.predict(test_data)
+    test_acc = accuracy_score(y_test_true, y_test_pred)
+    p_ = precision_score(y_test_true, y_test_pred, average='weighted', zero_division=0)
+    r_ = recall_score(y_test_true, y_test_pred, average='weighted', zero_division=0)
+    f_ = f1_score(y_test_true, y_test_pred, average='weighted', zero_division=0)
+    logging.info(f"AutoGluon test accuracy: {test_acc:.3f}")
+    logging.info(f"Precision: {p_:.3f}, Recall: {r_:.3f}, F1: {f_:.3f}")
+    logging.info(f"Classification Report:\n{classification_report(y_test_true, y_test_pred)}")
 
     elapsed = time.time() - start_time
-    logging.info(f"Randomized search complete in {elapsed:.2f} seconds")
-    logging.info(f"Best Params: {random_search.best_params_}")
-    logging.info(f"Training complete. Train Acc: {train_acc:.3f}, Test Acc: {test_acc:.3f}")
-    logging.info(f"Classification Report:\n{report}")
-    logging.info(f"Precision: {precision:.3f}, Recall: {recall:.3f}, F1: {f1:.3f}")
+    logging.info(f"AutoGluon ensemble training finished in {elapsed:.2f} sec.")
 
-    # Cleanup
-    del X_train, X_test, y_train, y_test, random_search
-    gc.collect()
-    logging.info("Garbage collection complete after training with stacking ensemble.")
+    # Set the global MODEL_FEATURES and MODEL_DEFAULTS
+    global MODEL_FEATURES  # (You can remove MODEL_DEFAULTS from the global scope)
+    MODEL_FEATURES = list(features.columns)
+    MODEL_DEFAULTS = {}
+    for col in MODEL_FEATURES:
+        if pd.api.types.is_numeric_dtype(features[col]):
+            MODEL_DEFAULTS[col] = features[col].median()
+        else:
+            mode_val = features[col].mode()
+            if not mode_val.empty:
+                MODEL_DEFAULTS[col] = mode_val.iloc[0]
+            else:
+                MODEL_DEFAULTS[col] = "Unknown"
 
-    return best_model
+    final_pipeline = Pipeline([
+        ('rf', AutoGluonModel(predictor=predictor))
+    ])
+
+    final_pipeline.fit(features, labels)
+    
+    # Save the feature list in the model
+    feature_list = list(features.columns)
+    final_pipeline.named_steps['rf'].feature_names_in_ = feature_list
+    logging.info(f"Feature list stored in model: {feature_list}")
+    
+    # Save the model defaults inside the model (so they are available at prediction time)
+    final_pipeline.named_steps['rf'].model_defaults_ = MODEL_DEFAULTS
+
+    # Optionally, also save the feature list to a JSON file.
+    feature_list_path = "models/recommend/feature_list.json"
+    os.makedirs(os.path.dirname(feature_list_path), exist_ok=True)
+    with open(feature_list_path, "w") as f:
+        json.dump(feature_list, f)
+    logging.info(f"Feature list saved to {feature_list_path}")
+
+    return final_pipeline
+
+def testing_phase(features, labels, model):
+    """
+    Splits the data into a new training and holdout set,
+    evaluates the model on both, and logs performance metrics.
+    """
+    X_train, X_holdout, y_train, y_holdout = train_test_split(
+        features, labels, test_size=0.2, random_state=42
+    )
+    
+    # Evaluate on the training set
+    train_preds = model.predict(X_train)
+    train_acc = accuracy_score(y_train, train_preds)
+    train_report = classification_report(y_train, train_preds)
+    logging.info("=== Training Set Performance ===")
+    logging.info(f"Accuracy: {train_acc:.3f}")
+    logging.info(f"Classification Report:\n{train_report}")
+    
+    # Evaluate on the holdout test set
+    holdout_preds = model.predict(X_holdout)
+    holdout_acc = accuracy_score(y_holdout, holdout_preds)
+    holdout_report = classification_report(y_holdout, holdout_preds)
+    logging.info("=== Holdout Test Set Performance ===")
+    logging.info(f"Accuracy: {holdout_acc:.3f}")
+    logging.info(f"Classification Report:\n{holdout_report}")
 
 class PitchSequencingMDP:
     """
-    Class to estimate transition probabilities and solve the Markov Decision Process (MDP)
-    for pitch sequencing.
+    Estimates transition probabilities and solves the Markov Decision Process (MDP) for pitch sequencing.
     """
     def __init__(self, df):
         self.state_space = df['state'].cat.categories.tolist() if 'state' in df.columns else []
@@ -494,7 +520,6 @@ def update_game_state(current_state, pitch, mdp):
     if key in mdp.transition_model:
         next_states = list(mdp.transition_model[key].keys())
         probs = list(mdp.transition_model[key].values())
-        # Filter out any NaN probabilities and their corresponding next_states.
         valid = [(ns, p) for ns, p in zip(next_states, probs) if not np.isnan(p)]
         if valid:
             next_states, probs = zip(*valid)
@@ -508,102 +533,99 @@ def update_game_state(current_state, pitch, mdp):
         else:
             logging.warning("No valid transition probabilities found. Using fallback.")
             available = [s for s in mdp.state_space if s != current_state['state']]
-            if available:
-                next_state = np.random.choice(available)
-            else:
-                next_state = current_state['state']
+            next_state = np.random.choice(available) if available else current_state['state']
         if isinstance(next_state, str) and next_state.startswith('terminal'):
             logging.info(f"Reached terminal state: {next_state}")
             available = [s for s in mdp.state_space if s != current_state['state']]
-            if available:
-                new_state = np.random.choice(available)
-                logging.info(f"Fallback: updating state from {current_state['state']} to {new_state}")
-            else:
-                new_state = next_state
+            new_state = np.random.choice(available) if available else next_state
         else:
             new_state = next_state
     else:
         logging.info(f"No transition for key ({current_state.get('state')}, {pitch}). Using fallback state update.")
         available = [s for s in mdp.state_space if s != current_state.get('state')]
-        if available:
-            new_state = np.random.choice(available)
-            logging.info(f"Fallback: updating state from {current_state.get('state')} to {new_state}")
+        new_state = np.random.choice(available) if available else current_state.get('state')
     current_state['state'] = new_state
     try:
         cnt, _ = new_state.split('_')
         b, s = cnt.split('-')
-        b_val = int(float(b))
-        s_val = int(float(s))
-        current_state['balls'] = b_val
-        current_state['strikes'] = s_val
-        current_state['count'] = f"{b_val}-{s_val}"
+        current_state['balls'] = int(float(b))
+        current_state['strikes'] = int(float(s))
+        current_state['count'] = f"{b}-{s}"
     except Exception as e:
         logging.error(f"Error updating state: {e}")
     return current_state
 
-
 def recommend_pitch(game_state, supervised_model, mdp_policy, df_features):
-    """
-    Recommends the next pitch based on the current game state using the supervised model and MDP policy.
-    """
     logging.info(f"Recommending pitch for game state: {game_state}")
-    feature_row = pd.DataFrame([game_state])
-    try:
-        feature_row[['balls', 'strikes']] = feature_row['count'].str.split('-', expand=True).astype(int)
-    except Exception as e:
-        logging.error(f"Error processing count in game_state: {e}")
-    feature_row['last_pitch'] = feature_row.get('last_pitch', np.nan)
-    feature_row['is_first_pitch'] = feature_row['last_pitch'].apply(lambda x: 1 if pd.isna(x) else 0)
-    for feat in ['relspeed', 'spinrate']:
-        if feat not in feature_row.columns:
-            feature_row[feat] = 0.0
-
-    # Ensure the feature row has the same columns as used for training.
+    
+    # Retrieve the full feature list from the saved model if available.
     if hasattr(supervised_model.named_steps['rf'], "feature_names_in_"):
-        feature_names = supervised_model.named_steps['rf'].feature_names_in_
+        full_feature_list = list(supervised_model.named_steps['rf'].feature_names_in_)
     else:
-        feature_names = MODEL_FEATURES
-    feature_row = feature_row.reindex(columns=feature_names, fill_value=0)
+        full_feature_list = MODEL_FEATURES
+
+    # Retrieve the model defaults from the saved model if available.
+    if hasattr(supervised_model.named_steps['rf'], "model_defaults_"):
+        model_defaults = supervised_model.named_steps['rf'].model_defaults_
+    else:
+        model_defaults = {}
+    
+    # Build a feature row with all required features.
+    feature_row = fill_missing_features(game_state, full_feature_list, model_defaults)
+    
+    # Get the pitch classes (avoid ambiguous truth value checks)
+    pitch_classes = []
+    if hasattr(supervised_model.named_steps['rf'], "classes_"):
+        pitch_classes = supervised_model.named_steps['rf'].classes_
+        # Convert to list if it's an ndarray.
+        pitch_classes = list(pitch_classes)
+    if not pitch_classes:
+        logging.error("No classes available in the model.")
     
     try:
         probs = supervised_model.predict_proba(feature_row)
-        pitch_classes = supervised_model.named_steps['rf'].classes_
-        prob_dict = dict(zip(pitch_classes, probs[0]))
     except Exception as e:
         logging.error(f"Error predicting with supervised model: {e}")
-        prob_dict = {}
+        # Fallback: assign equal probability if prediction fails.
+        if pitch_classes:
+            probs = np.array([[1/len(pitch_classes)] * len(pitch_classes)])
+        else:
+            probs = np.array([[0]])
     
+    prob_dict = dict(zip(pitch_classes, probs[0]))
+    
+    # Remove the "Unknown" prediction if there are other options.
     if "Unknown" in prob_dict and len(prob_dict) > 1:
         prob_dict.pop("Unknown")
     
     pitcher_id = game_state.get('pitcher_id')
     pitcher_arsenal = get_pitcher_arsenal(df_features, pitcher_id)
     logging.info(f"Pitcher {pitcher_id} arsenal: {pitcher_arsenal}")
-
-    # Filter to only include pitches in the pitcher's arsenal.
-    prob_dict = {p: prob for p, prob in prob_dict.items() if p in pitcher_arsenal}
-    if not prob_dict:
-        logging.warning("No predictions within pitcher arsenal. Falling back to full predictions.")
-        pitcher_arsenal = supervised_model.named_steps['rf'].classes_
-        prob_dict = dict(zip(pitch_classes, probs[0]))
-        if "Unknown" in prob_dict:
-            prob_dict.pop("Unknown")
     
+    # Filter predictions to only include those in the pitcher's arsenal.
+    filtered_prob_dict = {p: prob for p, prob in prob_dict.items() if p in pitcher_arsenal}
+    if not filtered_prob_dict:
+        logging.warning("No predictions within pitcher arsenal. Falling back to full predictions.")
+        filtered_prob_dict = prob_dict.copy()
+        if "Unknown" in filtered_prob_dict:
+            filtered_prob_dict.pop("Unknown")
+    
+    # Optionally adjust probabilities with the MDP recommendation.
     state_key = game_state.get('state')
     mdp_recommendation = mdp_policy.get(state_key)
-    if mdp_recommendation and mdp_recommendation in prob_dict:
-        prob_dict[mdp_recommendation] += 0.1
+    if mdp_recommendation and mdp_recommendation in filtered_prob_dict:
+        filtered_prob_dict[mdp_recommendation] += 0.1
 
-    total_prob = sum(prob_dict.values())
+    total_prob = sum(filtered_prob_dict.values())
     if total_prob > 0:
-        for k in prob_dict:
-            prob_dict[k] /= total_prob
+        for k in filtered_prob_dict:
+            filtered_prob_dict[k] /= total_prob
     else:
-        keys = list(prob_dict.keys())
-        prob_dict = {k: 1/len(keys) for k in keys}
+        keys = list(filtered_prob_dict.keys())
+        filtered_prob_dict = {k: 1/len(keys) for k in keys}
     
-    pitches = list(prob_dict.keys())
-    pitch_probs = np.array([prob_dict[p] for p in pitches])
+    pitches = list(filtered_prob_dict.keys())
+    pitch_probs = np.array([filtered_prob_dict[p] for p in pitches])
     
     if np.random.rand() < EPSILON:
         recommended_pitch = np.random.choice(pitches)
@@ -645,22 +667,33 @@ def run_pretrained_example(model_path, hist_df, mdp_policy, mdp):
 
 def main():
     """
-    Main function to load data, compute features, train the model, solve the MDP, and simulate recommendations.
+    Main function: loads the full dataset, computes features, trains the supervised model,
+    solves the MDP, and simulates pitch recommendations.
     """
     file_path = "Derived_Data/feature/feature_20250301_105232.parquet"
     df_raw = load_data(file_path)
     df_features = compute_features(df_raw)
     
+    # Drop datetime columns (like 'date' or 'time') from features as they cause issues with StandardScaler.
+    drop_cols = [col for col in df_features.columns if pd.api.types.is_datetime64_any_dtype(df_features[col])]
+    if drop_cols:
+        logging.info(f"Dropping datetime columns: {drop_cols}")
+        df_features = df_features.drop(columns=drop_cols)
+    
     if 'target' in df_features.columns:
         labels = df_features['target']
-        features = df_features[MODEL_FEATURES].copy()
+        # Use all columns except the target as features
+        features = df_features.drop(columns=['target']).copy()
+        # Optionally, store the dynamic feature list
+        MODEL_FEATURES = list(features.columns)
     else:
         logging.error("Target column not found in features")
         return
 
     logging.info("Starting supervised model training process...")
     supervised_model = train_supervised_model(features, labels)
-    
+    logging.info("Starting testing phase to check for overfitting...")
+    testing_phase(features, labels, supervised_model)
     model_save_path = "models/recommend/model.pkl"
     os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
     dump(supervised_model, model_save_path)
@@ -692,11 +725,40 @@ def main():
 
 if __name__ == '__main__':
     main()
-    # To run without training (using the saved model), uncomment the following lines:
-    # pretrained_model_path = "models/recommend/model.pkl"
-    # df_raw = load_data("Derived_Data/feature/feature_20250301_105232.parquet")
-    # df_features = compute_features(df_raw)
-    # mdp = PitchSequencingMDP(df_features)
-    # mdp.estimate_transition_probabilities()
-    # mdp_policy = mdp.solve_mdp()
-    # run_pretrained_example(pretrained_model_path, df_features, mdp_policy, mdp)
+    # Or, to load a saved model and run a prediction example:
+    df_raw = load_data("Derived_Data/feature/feature_20250301_105232.parquet")
+    df_features = compute_features(df_raw)
+
+    # Drop datetime columns if any remain
+    drop_cols = [col for col in df_features.columns if pd.api.types.is_datetime64_any_dtype(df_features[col])]
+    if drop_cols:
+        logging.info(f"Dropping datetime columns: {drop_cols}")
+        df_features = df_features.drop(columns=drop_cols)
+
+    # Load the saved supervised model
+    model_path = "models/recommend/model.pkl"
+    saved_model = load(model_path)
+    logging.info("Saved model loaded.")
+
+    # Recreate the MDP from the computed features
+    mdp = PitchSequencingMDP(df_features)
+    mdp.estimate_transition_probabilities()
+    mdp_policy = mdp.solve_mdp()
+
+    # Prepare a sample game state for a given count, outs, inning, batter_id, and pitcher_id.
+    game_state = prepare_game_state(
+        count="1-1",
+        outs=1,
+        inning=6,
+        batter_id=1000032366,
+        pitcher_id=1000066910,
+        hist_df=df_features
+    )
+
+    # Get a single recommended pitch using the loaded model.
+    recommended_pitch = recommend_pitch(game_state, saved_model, mdp_policy, df_features)
+    print("Recommended pitch:", recommended_pitch)
+
+    # Simulate the next 10 pitches starting from the game state.
+    pitch_sequence = simulate_next_pitches(game_state, saved_model, mdp_policy, mdp, df_features, n=10)
+    print("Simulated pitch sequence:", pitch_sequence)
