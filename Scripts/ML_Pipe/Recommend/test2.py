@@ -287,8 +287,8 @@ def train_supervised_model(features, labels):
         path=save_dir
     ).fit(
         train_data=train_data,
-        time_limit=1200,
-        presets='medium_quality_faster_train',
+        time_limit=3600,
+        presets='best_quality',
         verbosity=2
     )
 
