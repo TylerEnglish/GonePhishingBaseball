@@ -46,12 +46,34 @@ The project has two main components:
     - `feature.py` – Generates advanced features.
     - `data_director.py` – Orchestrates the execution of the data processing pipeline. Supports running the full pipeline or only specific stages if changes are detected.
   
-  - **Machine Learning Pipeline (Scripts/ML_Pipe/):**
-    - **Base Models (Scripts/ML_Pipe/Base_Models/):**  
-      - Contains modules for training and predicting with both regression and classification models.
-      - `base_director.py` – Coordinates model training, artifact saving, and predictions.
-    - **Advance Model (Scripts/ML_Pipe/advance_models):**  
-      - Contains an advanced PyTorch model (a multi-level transformer) with custom training routines, cross-validation, and prediction functions.
+  - **Machine Learning Pipeline (`Scripts/ML_Pipe/`):**
+
+  - **Regression Model (`Scripts/ML_Pipe/Base_Models/num_pitches.py`):**  
+    - Models tested: **PyCaret**, **TabNetRegressor**, **XGBoost**.
+    - Final selection: **XGBoost**.
+    - Originally intended to use TabNet for consistency across regression and classification tasks but chose XGBoost based on PyCaret performance evaluations.
+
+  - **Recommendation System (`Scripts/ML_Pipe/Recommend/model.py`):**
+    - Models used: **RandomForestClassifier** and **Markov Decision Process (MDP)**.
+    - **RandomForestClassifier**:
+      - Predicts pitch types using real-time game data (count, pitch speed, spin rate, pitcher/batter handedness).
+      - Outputs pitch probabilities.
+    - **Markov Decision Process**:
+      - Uses historical pitch sequences to determine optimal pitches for different game scenarios.
+      - Combines predictive probabilities from RandomForest with strategic MDP decisions and slight randomness to enhance realism and flexibility.
+
+  - **Scoring Model (`Scripts/ML_Pipe/Base_Models/pitching_options.py`):**
+    - Model: **TabNetClassifier**.
+    - Metrics used:
+      - **Accuracy** – standard predictive performance measure.
+      - **F1 Score** – ensures a balanced evaluation of precision and recall.
+      - **Precision** – specifically emphasized to minimize false positives, avoiding scenarios where expected strikes or outs result unexpectedly in balls in play or home runs.
+
+  - **Pipeline Coordination (`Scripts/ML_Pipe/ml_director.py`):**
+    - Manages the structured execution of the pipeline:
+      1. **Regression Model** predicts the expected number of pitches a pitcher will throw.
+      2. **Recommendation System** identifies the optimal next pitch based on the current game situation.
+      3. **Scoring Model** evaluates and scores the quality of the recommended pitch.
 
 - **Dashboard:**
   - `streamlit_app.py` – Launches the interactive dashboard for data visualization and model predictions.
