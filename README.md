@@ -31,7 +31,7 @@ The project has two main components:
 
 - **Python 3.12**  
 - All required packages are listed in the `requirement.txt` file.
-  - [Requirements File](requirement.txt)
+  - [Requirements File](requirements.txt)
 
 ## File Structure
 
